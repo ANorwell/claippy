@@ -62,16 +62,23 @@ impl Bedrock {
     pub fn create(model_id: String) -> Result<Self> {
         let runtime = Runtime::new()?;
         let start = Instant::now();
-        let config = runtime.block_on(aws_config::from_env().region(Self::region()).load());
+        let config = runtime.block_on(
+            aws_config::from_env()
+                .region(Self::region())
+                .profile_name(Self::profile_name())
+                .load());
         log::info!("Load aws cfg: {:?}ms", (Instant::now() - start).as_millis());
         let client = aws_sdk_bedrockruntime::Client::new(&config);
         Ok(Bedrock { model_id, runtime, client })
     }
 
-    /// ::from_env is very slow when no region is specified. specifying explicitly is a big speed up, but maybe there's a better
-    /// way
+    /// ::from_env is very slow when no region is specified. specifying explicitly is a big speed up, but maybe there's a better way
     fn region() -> &'static str {
         "us-east-1"
+    }
+
+    fn profile_name() -> String {
+        "dev".to_owned()
     }
 }
 
