@@ -2,3 +2,12 @@
 name = "claippy"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+aws-config = { version = "1.1.7", features = ["behavior-version-latest"] }
+aws-sdk-bedrockruntime = "1.37.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.118"
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+env_logger = "0.11"
