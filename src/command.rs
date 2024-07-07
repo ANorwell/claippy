@@ -1,4 +1,4 @@
-use crate::model::{ReqMessage, ReqMessages, Model, Result, ResultIterator};
+use crate::{db::Db, model::{Message, Model, ReqMessages, Result, ResultIterator}};
 
 #[derive(Debug)]
 pub enum CliCmd {
@@ -27,13 +27,13 @@ impl CliCmd {
 }
 
 pub trait Command {
-    fn execute(self, model: impl Model) -> ResultIterator<Result<String>>;
+    fn execute(self, model: impl Model, db: &Db) -> ResultIterator<Result<String>>;
 }
 
 impl Command for CliCmd {
-    fn execute(self, model: impl Model) -> ResultIterator<Result<String>> {
+    fn execute(self, model: impl Model, db: &Db) -> ResultIterator<Result<String>> {
         match self {
-            Self::Query { query } => handle_query(model, query),
+            Self::Query { query } => handle_query(model, query, db),
             Self::AddToWorkspace { paths } => {
                 let iter = paths.into_iter().map(|r| Ok(r));
                 Ok(Box::new(iter))
@@ -42,7 +42,17 @@ impl Command for CliCmd {
     }
 }
 
-fn handle_query(model: impl Model, query: String) -> ResultIterator<Result<String>> {
-    let message = ReqMessage { role: "user".to_string(), content: query };
-    model.generate(ReqMessages::new(vec!(message)))
+fn handle_query(model: impl Model, query: String, db: &Db) -> ResultIterator<Result<String>> {
+    // get conversation
+    // convert conversation to ReqMessages (with new message added)
+    // append new user message to Conversation
+
+    let message = Message { role: "user".to_string(), content: query };
+    model.generate(ReqMessages::new(vec!(&message)))
+
+    //output
+
+    // extract artifact
+    // append new response to conversation
+    // store in DB
 }

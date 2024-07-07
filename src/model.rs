@@ -5,29 +5,29 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
 
-#[derive(Serialize)]
-pub struct ReqMessage {
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Message {
     pub role: String,
     pub content: String,
 }
 
 #[derive(Serialize)]
-pub struct ReqMessages {
-    pub messages: Vec<ReqMessage>,
+pub struct ReqMessages<'a> {
+    pub messages: Vec<&'a Message>,
 }
 
-impl ReqMessages {
-    pub fn new(messages: Vec<ReqMessage>) -> ReqMessages {
+impl ReqMessages<'_> {
+    pub fn new(messages: Vec<&Message>) -> ReqMessages {
         ReqMessages { messages }
     }
 }
 
 #[derive(Serialize)]
-struct ReqBody {
+struct ReqBody<'a> {
     anthropic_version: String,
     max_tokens: i32,
     temperature: f32,
-    messages: Vec<ReqMessage>
+    messages: Vec<&'a Message>
 }
 
 pub type Result<T> = core::result::Result<T, Box<dyn Error>>;
@@ -133,7 +133,7 @@ struct RspChunk {
 }
 
 // Parse the response chunks and extract the text. Ensure we don't fail on parsing, but discard chunks that don't have text
-/// e.g.s
+/// e.g.s:
 /// Ok("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}")
 /// Ok("{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}")
 /// Ok("{\"type\":\"content_block_stop\",\"index\":0}")
