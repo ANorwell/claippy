@@ -1,5 +1,5 @@
 use std::{env, error::Error, process};
-use claippy::{command::{CliCmd, Command}, db::Db, model::Bedrock};
+use claippy::{command::{CliCmd, Command}, db::Db, query::Bedrock};
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();

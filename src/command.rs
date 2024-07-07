@@ -1,4 +1,4 @@
-use crate::{db::Db, model::{Message, Model, ReqMessages, Result, ResultIterator}};
+use crate::{db::Db, model::{Message, MessageRefs, Result, ResultIterator}, query::Queryable};
 
 #[derive(Debug)]
 pub enum CliCmd {
@@ -27,11 +27,11 @@ impl CliCmd {
 }
 
 pub trait Command {
-    fn execute(self, model: impl Model, db: &Db) -> ResultIterator<Result<String>>;
+    fn execute(self, model: impl Queryable, db: &Db) -> ResultIterator<Result<String>>;
 }
 
 impl Command for CliCmd {
-    fn execute(self, model: impl Model, db: &Db) -> ResultIterator<Result<String>> {
+    fn execute(self, model: impl Queryable, db: &Db) -> ResultIterator<Result<String>> {
         match self {
             Self::Query { query } => handle_query(model, query, db),
             Self::AddToWorkspace { paths } => {
@@ -42,13 +42,13 @@ impl Command for CliCmd {
     }
 }
 
-fn handle_query(model: impl Model, query: String, db: &Db) -> ResultIterator<Result<String>> {
+fn handle_query(model: impl Queryable, query: String, db: &Db) -> ResultIterator<Result<String>> {
     // get conversation
     // convert conversation to ReqMessages (with new message added)
     // append new user message to Conversation
 
     let message = Message { role: "user".to_string(), content: query };
-    model.generate(ReqMessages::new(vec!(&message)))
+    model.generate(MessageRefs::new(vec!(&message)))
 
     //output
 

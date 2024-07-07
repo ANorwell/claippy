@@ -1,49 +1,10 @@
-use regex::Regex;
 use std::{fs, path::PathBuf};
-use serde::{Deserialize, Serialize};
 
-use crate::model::{Message, Result};
+use crate::model::{Conversation, Result};
 
 /// Stores and retrieves conversations by conversation ID.
 ///
 
-
-#[derive(Serialize, Deserialize)]
-struct Artifact {
-    text: String
-}
-
-impl Artifact {
-    pub fn new(artifact: String) -> Artifact {
-        Artifact { text: artifact }
-    }
-
-    pub fn extract_from_message(message: &Message) -> Option<Artifact> {
-        let pattern = r"<Artifact>(.*?)</Artifact>";
-        let re = Regex::new(pattern).unwrap();
-        re.captures(&message.content)
-            .and_then(|cap| cap.get(1))
-            .map(|m| Artifact::new(m.as_str().into()))
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct RichMessage {
-    message: Message,
-    artifact: Option<Artifact>
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Conversation {
-    id: String,
-    messages: Vec<RichMessage>
-}
-
-impl Conversation {
-    pub fn as_message_refs(&self) -> Vec<&Message> {
-        self.messages.iter().map(|rich| &rich.message).collect()
-    }
-}
 
 pub struct Db {
     path: PathBuf,
