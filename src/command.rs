@@ -1,8 +1,12 @@
-use crate::{db::Db, model::{Message, MessageRefs, Result, ResultIterator}, query::Queryable};
+use chrono::Utc;
+use std::iter;
+
+use crate::{db::Db, model::{Conversation, Message, MessageRefs, Result, ResultIterator}, query::Queryable};
 
 #[derive(Debug)]
 pub enum CliCmd {
-    AddToWorkspace { paths: Vec<String> },
+    NewConversation { conversation_id: String },
+    AddWorkspaceContext { paths: Vec<String> },
     Query { query: String },
 }
 
@@ -13,7 +17,11 @@ impl CliCmd {
         let cmd = args.next().ok_or("No command provided")?;
 
         let cmd = match cmd.as_str() {
-            "add" | "a" => Ok(CliCmd::AddToWorkspace {
+            "new" | "n" => {
+                let conversation_id = Conversation::create_id(args.collect::<Vec<String>>().join("-"));
+                 Ok(CliCmd::NewConversation { conversation_id  })
+            },
+            "add" | "a" => Ok(CliCmd::AddWorkspaceContext {
                 paths: args.collect(),
             }),
             "query" | "q" => Ok(CliCmd::Query {
@@ -34,12 +42,23 @@ impl Command for CliCmd {
     fn execute(self, model: impl Queryable, db: &Db) -> ResultIterator<Result<String>> {
         match self {
             Self::Query { query } => handle_query(model, query, db),
-            Self::AddToWorkspace { paths } => {
-                let iter = paths.into_iter().map(|r| Ok(r));
-                Ok(Box::new(iter))
+            Self::AddWorkspaceContext { paths } => {
+                let mut conversation = db.read_current_conversation()?;
+                let context_display = "Added context: ".to_owned() + &paths.join(", ");
+                db.add_workspace_contexts(&mut conversation, paths)?;
+                command_output(context_display)
+            },
+            Self::NewConversation { conversation_id } => {
+                db.create_conversation(&conversation_id)?;
+                command_output("Created conversation ".to_owned() + &conversation_id)
             }
         }
     }
+}
+
+fn command_output(message: String) -> ResultIterator<Result<String>> {
+    let iter = iter::once(Ok(message));
+    Ok(Box::new(iter))
 }
 
 fn handle_query(model: impl Queryable, query: String, db: &Db) -> ResultIterator<Result<String>> {

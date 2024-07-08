@@ -5,7 +5,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
     let cmd = CliCmd::parse_args(env::args()).unwrap_or_else(|err| {
-        log::info!("Error parsing arguments: {err}");
+        log::error!("Error parsing arguments: {err}");
         process::exit(1);
     });
 

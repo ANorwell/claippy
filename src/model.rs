@@ -1,5 +1,6 @@
 use std::error::Error;
 
+use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -54,14 +55,30 @@ pub struct RichMessage {
     artifact: Option<Artifact>
 }
 
+
+#[derive(Serialize, Deserialize)]
+pub enum WorkspaceContext {
+    File(String),
+    Url(String)
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Conversation {
     pub id: String,
-    pub messages: Vec<RichMessage>
+    pub context: Vec<WorkspaceContext>,
+    pub messages: Vec<RichMessage>,
 }
 
 impl Conversation {
+    pub fn create_id(descriptor: String) -> String {
+        descriptor + "-" + &Utc::now().to_rfc3339()
+    }
+    pub fn empty(id: &str) -> Conversation {
+        Conversation { id: id.to_owned(), context: Vec::new(), messages: Vec::new() }
+    }
+
     pub fn as_message_refs(&self) -> Vec<&Message> {
         self.messages.iter().map(|rich| &rich.message).collect()
     }
+
 }

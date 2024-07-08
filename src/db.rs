@@ -1,16 +1,17 @@
 use std::{fs, path::PathBuf};
 
-use crate::model::{Conversation, Result};
+use crate::model::{Conversation, Result, WorkspaceContext};
 
 /// Stores and retrieves conversations by conversation ID.
-///
-
-
+/// Right now this uses/overwrites files, but it could use e.g. sqlite internally
 pub struct Db {
     path: PathBuf,
 }
 
 impl Db {
+
+    const CURRENT_PATH: &'static str = "current";
+
     pub fn create() -> Result<Db> {
         let mut path: PathBuf = std::env::current_dir()?;
         loop {
@@ -33,10 +34,45 @@ impl Db {
         Ok(())
     }
 
+    pub fn create_conversation(&self, conversation_id: &str) -> Result<()> {
+        let conversation = Conversation::empty(conversation_id);
+        self.write_conversation(&conversation)?;
+        std::os::unix::fs::symlink(self.path.join(&conversation_id), self.path.join(Self::CURRENT_PATH))?;
+        Ok(())
+    }
+
+    pub fn add_workspace_contexts(&self, conversation: &mut Conversation, raw_contexts: Vec<String>) -> Result<()> {
+        let mut parsed_contexts: Vec<WorkspaceContext> = raw_contexts.into_iter()
+            .map(|raw|
+                if raw.starts_with("http://") || raw.starts_with("https://") {
+                    WorkspaceContext::Url(raw)
+                } else {
+                    WorkspaceContext::File(raw)
+                })
+            .collect();
+        conversation.context.append(&mut parsed_contexts);
+        self.write_conversation(&conversation)
+    }
+
+    // Reads a conversation. If no conversation exists, creates and returns an empty one.
     pub fn read_conversation(&self, conversation_id: &str) -> Result<Conversation> {
-        let file_path = self.path.join(conversation_id);
+        let file_path = self.path.join(&conversation_id);
+
+        if !file_path.exists() {
+            let conversation_to_create = if conversation_id.eq(Self::CURRENT_PATH) {
+                &Conversation::create_id("untitled-conversation".to_owned())
+            } else {
+                conversation_id
+            };
+            self.create_conversation(conversation_to_create)?
+        }
+
         let bytes = fs::read(file_path)?;
         Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    pub fn read_current_conversation(&self) -> Result<Conversation> {
+        self.read_conversation(Self::CURRENT_PATH)
     }
 }
 
