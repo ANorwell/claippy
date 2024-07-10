@@ -9,7 +9,6 @@ pub struct Db {
 }
 
 impl Db {
-
     const CURRENT_PATH: &'static str = "current";
 
     pub fn create() -> Result<Db> {
@@ -37,18 +36,27 @@ impl Db {
     pub fn create_conversation(&self, conversation_id: &str) -> Result<()> {
         let conversation = Conversation::empty(conversation_id);
         self.write_conversation(&conversation)?;
-        std::os::unix::fs::symlink(self.path.join(&conversation_id), self.path.join(Self::CURRENT_PATH))?;
+        std::os::unix::fs::symlink(
+            self.path.join(&conversation_id),
+            self.path.join(Self::CURRENT_PATH),
+        )?;
         Ok(())
     }
 
-    pub fn add_workspace_contexts(&self, conversation: &mut Conversation, raw_contexts: Vec<String>) -> Result<()> {
-        let mut parsed_contexts: Vec<WorkspaceContext> = raw_contexts.into_iter()
-            .map(|raw|
+    pub fn add_workspace_contexts(
+        &self,
+        conversation: &mut Conversation,
+        raw_contexts: Vec<String>,
+    ) -> Result<()> {
+        let mut parsed_contexts: Vec<WorkspaceContext> = raw_contexts
+            .into_iter()
+            .map(|raw| {
                 if raw.starts_with("http://") || raw.starts_with("https://") {
                     WorkspaceContext::Url(raw)
                 } else {
                     WorkspaceContext::File(raw)
-                })
+                }
+            })
             .collect();
         conversation.context.append(&mut parsed_contexts);
         self.write_conversation(&conversation)
@@ -75,7 +83,3 @@ impl Db {
         self.read_conversation(Self::CURRENT_PATH)
     }
 }
-
-
-
-

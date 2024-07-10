@@ -1,7 +1,8 @@
-use chrono::Utc;
-use std::iter;
-
-use crate::{db::Db, model::{Conversation, Message, MessageRefs, Result, ResultIterator}, query::Queryable};
+use crate::{
+    db::Db,
+    model::{Conversation, Result},
+    query::Queryable,
+};
 
 #[derive(Debug)]
 pub enum CliCmd {
@@ -12,7 +13,7 @@ pub enum CliCmd {
 
 pub enum CmdOutput {
     Done,
-    Message(String)
+    Message(String),
 }
 
 impl CliCmd {
@@ -23,9 +24,10 @@ impl CliCmd {
 
         let cmd = match cmd.as_str() {
             "new" | "n" => {
-                let conversation_id = Conversation::create_id(args.collect::<Vec<String>>().join("-"));
-                 Ok(CliCmd::NewConversation { conversation_id  })
-            },
+                let conversation_id =
+                    Conversation::create_id(args.collect::<Vec<String>>().join("-"));
+                Ok(CliCmd::NewConversation { conversation_id })
+            }
             "add" | "a" => Ok(CliCmd::AddWorkspaceContext {
                 paths: args.collect(),
             }),
@@ -52,10 +54,12 @@ impl Command for CliCmd {
                 let context_display = "Added context: ".to_owned() + &paths.join(", ");
                 db.add_workspace_contexts(&mut conversation, paths)?;
                 Ok(CmdOutput::Message(context_display))
-            },
+            }
             Self::NewConversation { conversation_id } => {
                 db.create_conversation(&conversation_id)?;
-                Ok(CmdOutput::Message("Created conversation ".to_owned() + &conversation_id))
+                Ok(CmdOutput::Message(
+                    "Created conversation ".to_owned() + &conversation_id,
+                ))
             }
         }
     }
@@ -64,7 +68,7 @@ impl Command for CliCmd {
 fn handle_query(model: impl Queryable, query: String, db: &Db) -> Result<CmdOutput> {
     let mut conversation = db.read_current_conversation()?;
     conversation.add_user_message(query);
-    let query_response =model.generate(conversation.as_message_refs().into())?;
+    let query_response = model.generate(conversation.as_message_refs().into())?;
 
     let mut full_message = String::new();
 

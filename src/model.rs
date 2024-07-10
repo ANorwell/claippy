@@ -27,7 +27,7 @@ impl MessageRefs<'_> {
     }
 }
 
-impl <'a> Into<MessageRefs<'a>> for Vec<&'a Message> {
+impl<'a> Into<MessageRefs<'a>> for Vec<&'a Message> {
     fn into(self) -> MessageRefs<'a> {
         MessageRefs { messages: self }
     }
@@ -35,7 +35,7 @@ impl <'a> Into<MessageRefs<'a>> for Vec<&'a Message> {
 
 #[derive(Serialize, Deserialize)]
 struct Artifact {
-    pub text: String
+    pub text: String,
 }
 
 impl Artifact {
@@ -55,20 +55,22 @@ impl Artifact {
 #[derive(Serialize, Deserialize)]
 pub struct RichMessage {
     message: Message,
-    artifact: Option<Artifact>
+    artifact: Option<Artifact>,
 }
 
 impl RichMessage {
     pub fn new(message: Message) -> RichMessage {
-        RichMessage { message, artifact: None }
+        RichMessage {
+            message,
+            artifact: None,
+        }
     }
 }
-
 
 #[derive(Serialize, Deserialize)]
 pub enum WorkspaceContext {
     File(String),
-    Url(String)
+    Url(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -83,7 +85,11 @@ impl Conversation {
         descriptor + "-" + &Utc::now().to_rfc3339()
     }
     pub fn empty(id: &str) -> Conversation {
-        Conversation { id: id.to_owned(), context: Vec::new(), messages: Vec::new() }
+        Conversation {
+            id: id.to_owned(),
+            context: Vec::new(),
+            messages: Vec::new(),
+        }
     }
 
     pub fn add_user_message(&mut self, message: String) {
@@ -95,11 +101,13 @@ impl Conversation {
     }
 
     fn add_message(&mut self, role: &str, message: String) {
-        self.messages.push(RichMessage::new(Message { role: role.to_owned(), content: message }))
+        self.messages.push(RichMessage::new(Message {
+            role: role.to_owned(),
+            content: message,
+        }))
     }
 
     pub fn as_message_refs(&self) -> Vec<&Message> {
         self.messages.iter().map(|rich| &rich.message).collect()
     }
-
 }
