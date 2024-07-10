@@ -10,6 +10,11 @@ pub enum CliCmd {
     Query { query: String },
 }
 
+pub enum CmdOutput {
+    Done,
+    Message(String)
+}
+
 impl CliCmd {
     pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<CliCmd> {
         args.next(); // ignore the script itself
@@ -35,43 +40,43 @@ impl CliCmd {
 }
 
 pub trait Command {
-    fn execute(self, model: impl Queryable, db: &Db) -> ResultIterator<Result<String>>;
+    fn execute(self, model: impl Queryable, db: &Db) -> Result<CmdOutput>;
 }
 
 impl Command for CliCmd {
-    fn execute(self, model: impl Queryable, db: &Db) -> ResultIterator<Result<String>> {
+    fn execute(self, model: impl Queryable, db: &Db) -> Result<CmdOutput> {
         match self {
             Self::Query { query } => handle_query(model, query, db),
             Self::AddWorkspaceContext { paths } => {
                 let mut conversation = db.read_current_conversation()?;
                 let context_display = "Added context: ".to_owned() + &paths.join(", ");
                 db.add_workspace_contexts(&mut conversation, paths)?;
-                command_output(context_display)
+                Ok(CmdOutput::Message(context_display))
             },
             Self::NewConversation { conversation_id } => {
                 db.create_conversation(&conversation_id)?;
-                command_output("Created conversation ".to_owned() + &conversation_id)
+                Ok(CmdOutput::Message("Created conversation ".to_owned() + &conversation_id))
             }
         }
     }
 }
 
-fn command_output(message: String) -> ResultIterator<Result<String>> {
-    let iter = iter::once(Ok(message));
-    Ok(Box::new(iter))
-}
+fn handle_query(model: impl Queryable, query: String, db: &Db) -> Result<CmdOutput> {
+    let mut conversation = db.read_current_conversation()?;
+    conversation.add_user_message(query);
+    let query_response =model.generate(conversation.as_message_refs().into())?;
 
-fn handle_query(model: impl Queryable, query: String, db: &Db) -> ResultIterator<Result<String>> {
-    // get conversation
-    // convert conversation to ReqMessages (with new message added)
-    // append new user message to Conversation
+    let mut full_message = String::new();
 
-    let message = Message { role: "user".to_string(), content: query };
-    model.generate(MessageRefs::new(vec!(&message)))
+    for chunk_result in query_response {
+        let chunk = chunk_result?;
+        print!("{}", chunk);
+        full_message += &chunk;
+    }
 
-    //output
+    // extract artifact from the message if there is one
 
-    // extract artifact
-    // append new response to conversation
-    // store in DB
+    conversation.add_assistant_message(full_message);
+    db.write_conversation(&conversation)?;
+    Ok(CmdOutput::Done)
 }

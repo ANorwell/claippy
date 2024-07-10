@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 pub type Result<T> = core::result::Result<T, Box<dyn Error>>;
 pub type ResultIterator<T> = Result<Box<dyn Iterator<Item = T>>>;
 
+const USER_ROLE: &str = "user";
+const ASSISTANT_ROLE: &str = "assistant";
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: String,
@@ -55,6 +58,12 @@ pub struct RichMessage {
     artifact: Option<Artifact>
 }
 
+impl RichMessage {
+    pub fn new(message: Message) -> RichMessage {
+        RichMessage { message, artifact: None }
+    }
+}
+
 
 #[derive(Serialize, Deserialize)]
 pub enum WorkspaceContext {
@@ -75,6 +84,18 @@ impl Conversation {
     }
     pub fn empty(id: &str) -> Conversation {
         Conversation { id: id.to_owned(), context: Vec::new(), messages: Vec::new() }
+    }
+
+    pub fn add_user_message(&mut self, message: String) {
+        self.add_message(USER_ROLE, message);
+    }
+
+    pub fn add_assistant_message(&mut self, message: String) {
+        self.add_message(ASSISTANT_ROLE, message);
+    }
+
+    fn add_message(&mut self, role: &str, message: String) {
+        self.messages.push(RichMessage::new(Message { role: role.to_owned(), content: message }))
     }
 
     pub fn as_message_refs(&self) -> Vec<&Message> {
