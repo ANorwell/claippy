@@ -43,25 +43,6 @@ impl Db {
         Ok(())
     }
 
-    pub fn add_workspace_contexts(
-        &self,
-        conversation: &mut Conversation,
-        raw_contexts: Vec<String>,
-    ) -> Result<()> {
-        let mut parsed_contexts: Vec<WorkspaceContext> = raw_contexts
-            .into_iter()
-            .map(|raw| {
-                if raw.starts_with("http://") || raw.starts_with("https://") {
-                    WorkspaceContext::Url(raw)
-                } else {
-                    WorkspaceContext::File(raw)
-                }
-            })
-            .collect();
-        conversation.context.append(&mut parsed_contexts);
-        self.write_conversation(&conversation)
-    }
-
     // Reads a conversation. If no conversation exists, creates and returns an empty one.
     pub fn read_conversation(&self, conversation_id: &str) -> Result<Conversation> {
         let file_path = self.path.join(&conversation_id);

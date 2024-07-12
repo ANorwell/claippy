@@ -13,21 +13,11 @@ use crate::model::{Message, MessageRefs, Result, ResultIterator};
 
 #[derive(Serialize)]
 struct ReqBody<'a> {
-    anthropic_version: String,
+    anthropic_version: &'static str,
     max_tokens: i32,
     temperature: f32,
+    system: &'static str,
     messages: Vec<&'a Message>,
-}
-
-pub struct Test {
-    pub variable: String,
-}
-
-impl Test {
-    pub fn generate(self) -> ResultIterator<Result<String>> {
-        let iter = std::iter::from_fn(move || Some(Ok(self.variable.clone())));
-        Ok(Box::new(iter))
-    }
 }
 
 /// Queryable provides the interface that any LLM being queried should implement.
@@ -35,50 +25,50 @@ pub trait Queryable {
     fn generate(self, query: MessageRefs) -> ResultIterator<Result<String>>;
 }
 
+pub struct BedrockConfig {
+    pub model_id: &'static str,
+    pub system_prompt: &'static str,
+    pub temperature: f32,
+    pub region: &'static str,
+    pub aws_profile_name: &'static str,
+}
+
 /// Bedrock implementation of Queryable.
 /// The aws client uses async/tokio, and so the associated runtime is for use (`block_on`) with the client.
 ///
 pub struct Bedrock {
-    pub model_id: String,
+    pub model_config: BedrockConfig,
     pub runtime: Runtime,
     pub client: Client,
 }
 
 impl Bedrock {
-    pub fn create(model_id: String) -> Result<Self> {
+    pub fn create(model_config: BedrockConfig) -> Result<Self> {
         let runtime = Runtime::new()?;
         let start = Instant::now();
         let config = runtime.block_on(
             aws_config::from_env()
-                .region(Self::region())
-                .profile_name(Self::profile_name())
+                .region(model_config.region)
+                .profile_name(model_config.aws_profile_name)
                 .load(),
         );
         log::info!("Load aws cfg: {:?}ms", (Instant::now() - start).as_millis());
         let client = aws_sdk_bedrockruntime::Client::new(&config);
         Ok(Bedrock {
-            model_id,
+            model_config,
             runtime,
             client,
         })
-    }
-
-    /// ::from_env is very slow when no region is specified. specifying explicitly is a big speed up, but maybe there's a better way
-    fn region() -> &'static str {
-        "us-east-1"
-    }
-
-    fn profile_name() -> &'static str {
-        "dev"
     }
 }
 
 impl Queryable for Bedrock {
     fn generate(self, query: MessageRefs) -> ResultIterator<Result<String>> {
         let body_str = serde_json::to_string(&ReqBody {
-            anthropic_version: "bedrock-2023-05-31".to_string(),
-            max_tokens: 10240,
-            temperature: 0.5,
+            anthropic_version: "bedrock-2023-05-31",
+            max_tokens: 4096, // the maximum
+            temperature: self.model_config.temperature,
+            system: self.model_config.system_prompt,
             messages: query.messages,
         })?;
 
@@ -89,7 +79,7 @@ impl Queryable for Bedrock {
         let async_request = self
             .client
             .invoke_model_with_response_stream()
-            .model_id(self.model_id.clone())
+            .model_id(self.model_config.model_id)
             .body(Blob::new(body))
             .send();
 

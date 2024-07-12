@@ -1,6 +1,6 @@
 use crate::{
     db::Db,
-    model::{Conversation, Result},
+    model::{Artifact, Conversation, Result},
     query::Queryable,
 };
 
@@ -9,6 +9,8 @@ pub enum CliCmd {
     NewConversation { conversation_id: String },
     AddWorkspaceContext { paths: Vec<String> },
     Query { query: String },
+    Clear,
+    ListWorkspaceContext,
 }
 
 pub enum CmdOutput {
@@ -23,6 +25,9 @@ impl CliCmd {
         let cmd = args.next().ok_or("No command provided")?;
 
         let cmd = match cmd.as_str() {
+            "query" | "q" => Ok(CliCmd::Query {
+                query: args.collect::<Vec<String>>().join(" "),
+            }),
             "new" | "n" => {
                 let conversation_id =
                     Conversation::create_id(args.collect::<Vec<String>>().join("-"));
@@ -31,9 +36,8 @@ impl CliCmd {
             "add" | "a" => Ok(CliCmd::AddWorkspaceContext {
                 paths: args.collect(),
             }),
-            "query" | "q" => Ok(CliCmd::Query {
-                query: args.collect::<Vec<String>>().join(" "),
-            }),
+            "clear" => Ok(CliCmd::Clear),
+            "ls" => Ok(CliCmd::ListWorkspaceContext),
             other => Err(format!("Unknown command: {other}")),
         }?;
 
@@ -49,17 +53,23 @@ impl Command for CliCmd {
     fn execute(self, model: impl Queryable, db: &Db) -> Result<CmdOutput> {
         match self {
             Self::Query { query } => handle_query(model, query, db),
-            Self::AddWorkspaceContext { paths } => {
-                let mut conversation = db.read_current_conversation()?;
-                let context_display = "Added context: ".to_owned() + &paths.join(", ");
-                db.add_workspace_contexts(&mut conversation, paths)?;
-                Ok(CmdOutput::Message(context_display))
-            }
+            Self::AddWorkspaceContext { paths } => handle_add_workspace_contexts(db, paths),
             Self::NewConversation { conversation_id } => {
                 db.create_conversation(&conversation_id)?;
-                Ok(CmdOutput::Message(
-                    "Created conversation ".to_owned() + &conversation_id,
-                ))
+                Ok(CmdOutput::Message("Created conversation ".to_owned() + &conversation_id))
+            }
+            Self::Clear => {
+                let mut conversation = db.read_current_conversation()?;
+                conversation.clear()?;
+                db.write_conversation(&conversation)?;
+                Ok(CmdOutput::Message("Cleared conversation ".to_owned() + &conversation.id))
+            }
+            Self::ListWorkspaceContext => {
+                let conversation = db.read_current_conversation()?;
+                let contexts = conversation.context;
+                let context_display = "Current context:\n".to_owned() +
+                    &contexts.into_iter().map(|c| c.to_string()).collect::<Vec<String>>().join("\n");
+                Ok(CmdOutput::Message(context_display))
             }
         }
     }
@@ -78,9 +88,17 @@ fn handle_query(model: impl Queryable, query: String, db: &Db) -> Result<CmdOutp
         full_message += &chunk;
     }
 
-    // extract artifact from the message if there is one
+    let artifact = Artifact::extract_from_message(&full_message);
 
-    conversation.add_assistant_message(full_message);
+    conversation.add_assistant_message(full_message, artifact);
     db.write_conversation(&conversation)?;
     Ok(CmdOutput::Done)
+}
+
+fn handle_add_workspace_contexts(db: &Db, paths: Vec<String>) -> Result<CmdOutput> {
+    let mut conversation = db.read_current_conversation()?;
+    let context_display = "Added context: ".to_owned() + &paths.join(", ");
+    conversation.add_workspace_contexts(paths)?;
+    db.write_conversation(&conversation)?;
+    Ok(CmdOutput::Message(context_display))
 }
