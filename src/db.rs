@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use crate::model::{Conversation, Result, WorkspaceContext};
+use crate::model::{Conversation, Result};
 
 /// Stores and retrieves conversations by conversation ID.
 /// Right now this uses/overwrites files, but it could use e.g. sqlite internally

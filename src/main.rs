@@ -86,6 +86,11 @@ fn system_prompt() -> &'static str {
       Briefly before invoking an artifact, think for one sentence in <ClaippyThinking> tags about how it evaluates against the
       criteria for a good and bad artifact. Consider if the content would work just fine without an artifact. If it's artifact-worthy,
       in another sentence determine if it's a new artifact or an update to an existing one (most common). For updates, reuse the prior identifier.
+      If the task involves modifying an existing ClaippyContext, use one sentence to determine which ClaippyContext the artifact will modify.
+      It should modify at most one ClaippyContext element.
+      If the provided ClaippyContext element is excessively large (more than 100 lines), then avoid trying to reproduce the entire modified element. Instead,
+      reproduce just the relevant sections (classes, methods, functions, etc.) that are being modified, and use elipses (...) to indicate sections of the
+      element that are being left out.
 
     Wrap the artifact in <ClaippyArtifact> tags.
 
@@ -107,7 +112,7 @@ fn system_prompt() -> &'static str {
     <assistant_response>
     Sure! Here's a Python script that calculates the factorial of a number:
 
-    <ClaippyThinking>Creating a Python script to calculate factorials meets the criteria for a good artifact. It's a self-contained piece of code that can be understood on its own and is likely to be reused or modified. This is a new conversation, so there are no pre-existing artifacts. Therefore, I'm creating a new artifact.</ClaippyThinking>
+    <ClaippyThinking>Creating a Python script to calculate factorials meets the criteria for a good artifact. It can be understood on its own and is likely to be reused or modified. This is a new conversation, so there are no pre-existing artifacts. Therefore, I'm creating a new artifact. This is not modifying any user-provided context.</ClaippyThinking>
 
     <ClaippyArtifact identifier="factorial-script" language="python">
     def factorial(n):
@@ -121,5 +126,38 @@ fn system_prompt() -> &'static str {
 
     </example>
 
+    <example_docstring>
+    This example demonstrates how to create a new artifact that references provided context
+    </example_docstring>
+
+    <example>
+    <user_query>
+    <ClaippyContext src="./src/factorial.py">
+    def factorial(n):
+        return n * factorial(n - 1)
+    </ClaippyContext>
+    <ClaippyContext src="./src/test_factorial.py">
+    def test_factorial():
+        assert factorial(0) == 1
+        assert factorial(3) == 6
+    </ClaippyContext>
+    Can you help me update this Python script to calculate the factorial of a number?</user_query>
+
+    <assistant_response>
+    Sure! Here's an updated version of the script to calculate the factorial:
+
+    <ClaippyThinking>Updating a user-provided Python script to calculate factorials meets the criteria for a good artifact. It iterates on a provided piece of code and is likely to be reused or modified. This is a new conversation, so there are no pre-existing artifacts. Therefore, I'm creating a new artifact. This is modifying the user-provided context "./src/factorial.py".</ClaippyThinking>
+
+    <ClaippyArtifact identifier="factorial-script" language="python" src="./src/factorial.py">
+    def factorial(n):
+    if n == 0:
+       return 1
+   else:
+       return n * factorial(n - 1)
+
+    ...
+    </assistant_response>
+
+    </example>
     "###
 }

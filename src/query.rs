@@ -122,7 +122,7 @@ struct RspChunk {
 fn parse_claude_api_text(chunk_text: String) -> Result<Option<String>> {
     // This copies the part of the response chunks that we want to extract. Can we avoid this copy?
 
-    log::info!("Input: {chunk_text:?}");
+    log::debug!("Input: {chunk_text:?}");
 
     match serde_json::from_str(&chunk_text)? {
         RspChunk {

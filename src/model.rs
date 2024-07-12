@@ -37,6 +37,7 @@ impl<'a> Into<MessageRefs<'a>> for Vec<&'a Message> {
 pub struct Artifact {
     pub id: String,
     pub language: Option<String>,
+    pub src: Option<String>,
     pub text: String,
 }
 
@@ -54,10 +55,11 @@ impl Artifact {
         let elem = doc.descendants().find(|n| n.tag_name().name() == "ClippyArtifact")?;
 
         let id = elem.attribute("identifier")?;
-        let language = elem.attribute("language");
+        let language: Option<String> = elem.attribute("language").map(|s| s.into());
+        let src: Option<String> = elem.attribute("src").map(|s| s.into());
         let text = elem.text()?;
 
-        Some(Artifact { id: id.into(), language: language.map(|s| s.into()), text: text.into() })
+        Some(Artifact { id: id.into(), language, src, text: text.into() })
     }
 }
 
@@ -114,7 +116,12 @@ impl ToString for WorkspaceContext {
 #[derive(Serialize, Deserialize)]
 pub struct Conversation {
     pub id: String,
-    pub context: HashSet<WorkspaceContext>,
+
+    // The API only allows us to send one user message at a time, so we track which context is seen and unseen.
+    // When new context is added, it'll get prepended to the next message.
+    pub unseen_context: HashSet<WorkspaceContext>,
+    pub seen_context: HashSet<WorkspaceContext>,
+
     pub messages: Vec<RichMessage>,
 }
 
@@ -125,7 +132,8 @@ impl Conversation {
     pub fn empty(id: &str) -> Conversation {
         Conversation {
             id: id.to_owned(),
-            context: HashSet::new(),
+            unseen_context: HashSet::new(),
+            seen_context: HashSet::new(),
             messages: Vec::new(),
         }
     }
@@ -133,24 +141,32 @@ impl Conversation {
     pub fn add_workspace_contexts(&mut self, raw_contexts: Vec<String>) -> Result<()> {
         for raw_context in raw_contexts {
             let context: WorkspaceContext = raw_context.into();
-            self.messages.push(self.user_message(context.retrieve()?));
-            self.context.insert(context);
+            self.unseen_context.insert(context);
         }
 
         Ok(())
     }
 
-    // Clears the conversation, but not the context
+    // Clears the conversation, but not the context (all context will become unseen)
     pub fn clear(&mut self) -> Result<()> {
         self.messages.clear();
-        for context in &self.context {
-            self.messages.push(self.user_message(context.retrieve()?));
-        }
+        self.unseen_context.extend(self.seen_context.drain());
         Ok(())
     }
 
-    pub fn add_user_message(&mut self, message: String) {
-        self.messages.push(self.user_message(message));
+    pub fn add_user_message(&mut self, message: String) -> Result<()> {
+        let mut user_message = String::with_capacity(message.len());
+        for context in self.unseen_context.drain() {
+            user_message += &context.retrieve()?;
+            user_message += "\n";
+            self.seen_context.insert(context);
+
+        }
+
+        user_message += &message;
+
+        self.messages.push(self.user_message(user_message));
+        Ok(())
     }
 
     pub fn add_assistant_message(&mut self, message: String, artifact: Option<Artifact>) {

@@ -66,9 +66,10 @@ impl Command for CliCmd {
             }
             Self::ListWorkspaceContext => {
                 let conversation = db.read_current_conversation()?;
-                let contexts = conversation.context;
+                let contexts = conversation.seen_context.into_iter()
+                    .chain(conversation.unseen_context.into_iter());
                 let context_display = "Current context:\n".to_owned() +
-                    &contexts.into_iter().map(|c| c.to_string()).collect::<Vec<String>>().join("\n");
+                    &contexts.map(|c| c.to_string()).collect::<Vec<String>>().join("\n");
                 Ok(CmdOutput::Message(context_display))
             }
         }
@@ -77,7 +78,7 @@ impl Command for CliCmd {
 
 fn handle_query(model: impl Queryable, query: String, db: &Db) -> Result<CmdOutput> {
     let mut conversation = db.read_current_conversation()?;
-    conversation.add_user_message(query);
+    conversation.add_user_message(query)?;
     let query_response = model.generate(conversation.as_message_refs().into())?;
 
     let mut full_message = String::new();
@@ -97,7 +98,7 @@ fn handle_query(model: impl Queryable, query: String, db: &Db) -> Result<CmdOutp
 
 fn handle_add_workspace_contexts(db: &Db, paths: Vec<String>) -> Result<CmdOutput> {
     let mut conversation = db.read_current_conversation()?;
-    let context_display = "Added context: ".to_owned() + &paths.join(", ");
+    let context_display = "Added context:\n".to_owned() + &paths.join("\n");
     conversation.add_workspace_contexts(paths)?;
     db.write_conversation(&conversation)?;
     Ok(CmdOutput::Message(context_display))
