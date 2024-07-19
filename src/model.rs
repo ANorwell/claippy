@@ -1,11 +1,11 @@
-use std::{collections::HashSet, error::Error, fmt::Write};
+use std::{collections::HashSet, error::Error, fmt::{Display, Formatter, Write}};
 
 use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 pub type Result<T> = core::result::Result<T, Box<dyn Error>>;
-pub type ResultIterator<T> = Result<Box<dyn Iterator<Item = T>>>;
+pub type ResultIterator<'a, T> = Result<Box<dyn Iterator<Item = T> + 'a>>;
 
 const USER_ROLE: &str = "user";
 const ASSISTANT_ROLE: &str = "assistant";
@@ -27,9 +27,9 @@ impl MessageRefs<'_> {
     }
 }
 
-impl<'a> Into<MessageRefs<'a>> for Vec<&'a Message> {
-    fn into(self) -> MessageRefs<'a> {
-        MessageRefs { messages: self }
+impl<'a> From<Vec<&'a Message>> for MessageRefs<'a> {
+    fn from(messages: Vec<&'a Message>) -> Self {
+        MessageRefs { messages }
     }
 }
 
@@ -45,21 +45,28 @@ impl Artifact {
     pub fn extract_from_message(message: &str) -> Option<Artifact> {
         let pattern = r"<ClaippyArtifact.*?</ClaippyArtifact>";
         let re = Regex::new(pattern).unwrap();
-        re.captures(&message)
+        re.captures(message)
             .and_then(|cap| cap.get(0))
             .and_then(|m| Artifact::parse_artifact_xml(m.as_str()))
     }
 
     fn parse_artifact_xml(xml: &str) -> Option<Artifact> {
         let doc = roxmltree::Document::parse(xml).ok()?;
-        let elem = doc.descendants().find(|n| n.tag_name().name() == "ClippyArtifact")?;
+        let elem = doc
+            .descendants()
+            .find(|n| n.tag_name().name() == "ClippyArtifact")?;
 
         let id = elem.attribute("identifier")?;
         let language: Option<String> = elem.attribute("language").map(|s| s.into());
         let src: Option<String> = elem.attribute("src").map(|s| s.into());
         let text = elem.text()?;
 
-        Some(Artifact { id: id.into(), language, src, text: text.into() })
+        Some(Artifact {
+            id: id.into(),
+            language,
+            src,
+            text: text.into(),
+        })
     }
 }
 
@@ -89,7 +96,10 @@ impl WorkspaceContext {
         };
 
         let mut wrapped_contents = String::with_capacity(src.len() + contents.len() + 40);
-        write!(wrapped_contents, r#"<ClaippyContext src="{src}">{contents}</ClaippyContext>"#)?;
+        write!(
+            wrapped_contents,
+            r#"<ClaippyContext src="{src}">{contents}</ClaippyContext>"#
+        )?;
         Ok(wrapped_contents)
     }
 }
@@ -104,11 +114,11 @@ impl From<String> for WorkspaceContext {
     }
 }
 
-impl ToString for WorkspaceContext {
-    fn to_string(&self) -> String {
+impl Display for WorkspaceContext {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
-            WorkspaceContext::File(path) => path.to_owned(),
-            WorkspaceContext::Url(url) => url.to_owned(),
+            WorkspaceContext::File(path) => f.write_str(path),
+            WorkspaceContext::Url(url) => f.write_str(url),
         }
     }
 }
@@ -160,7 +170,6 @@ impl Conversation {
             user_message += &context.retrieve()?;
             user_message += "\n";
             self.seen_context.insert(context);
-
         }
 
         user_message += &message;
@@ -170,10 +179,13 @@ impl Conversation {
     }
 
     pub fn add_assistant_message(&mut self, message: String, artifact: Option<Artifact>) {
-        self.messages.push(RichMessage::new(Message {
-            role: ASSISTANT_ROLE.to_owned(),
-            content: message,
-        }, artifact));
+        self.messages.push(RichMessage::new(
+            Message {
+                role: ASSISTANT_ROLE.to_owned(),
+                content: message,
+            },
+            artifact,
+        ));
     }
 
     pub fn as_message_refs(&self) -> Vec<&Message> {
@@ -181,9 +193,12 @@ impl Conversation {
     }
 
     fn user_message(&self, content: String) -> RichMessage {
-        RichMessage::new(Message {
-            role: USER_ROLE.to_owned(),
-            content,
-        }, None)
+        RichMessage::new(
+            Message {
+                role: USER_ROLE.to_owned(),
+                content,
+            },
+            None,
+        )
     }
 }

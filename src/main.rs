@@ -8,7 +8,10 @@ use std::{env, error::Error, process};
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
-    let cmd = CliCmd::parse_args(env::args()).unwrap_or_else(|err| {
+    let mut args = env::args();
+    args.next(); // discard the process name itself
+
+    let cmd = CliCmd::parse_args(args).unwrap_or_else(|err| {
         log::error!("Error parsing arguments: {err}");
         process::exit(1);
     });
@@ -22,17 +25,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         system_prompt: system_prompt(),
         temperature: 0.3,
         region: "us-east-1",
-        aws_profile_name: "dev"
+        aws_profile_name: "dev",
     };
 
     let model = Bedrock::create(config)?;
 
-    match cmd.execute(model, &db)? {
+    match cmd.execute(&model, &db)? {
         CmdOutput::Message(msg) => print!("{}", msg),
         CmdOutput::Done => (), // do nothing
     }
 
-    print!("\n");
+    println!();
 
     Ok(())
 }

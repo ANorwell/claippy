@@ -22,7 +22,7 @@ struct ReqBody<'a> {
 
 /// Queryable provides the interface that any LLM being queried should implement.
 pub trait Queryable {
-    fn generate(self, query: MessageRefs) -> ResultIterator<Result<String>>;
+    fn generate(&self, query: MessageRefs) -> ResultIterator<Result<String>>;
 }
 
 pub struct BedrockConfig {
@@ -63,7 +63,7 @@ impl Bedrock {
 }
 
 impl Queryable for Bedrock {
-    fn generate(self, query: MessageRefs) -> ResultIterator<Result<String>> {
+    fn generate(&self, query: MessageRefs) -> ResultIterator<Result<String>> {
         let body_str = serde_json::to_string(&ReqBody {
             anthropic_version: "bedrock-2023-05-31",
             max_tokens: 4096, // the maximum
@@ -90,7 +90,7 @@ impl Queryable for Bedrock {
         let iter = std::iter::from_fn(move || {
             convert_to_option(self.runtime.block_on(event_receiver.recv()))
         })
-        .map(|item| item.and_then(|chunk| parse_claude_api_text(chunk)))
+        .map(|item| item.and_then(parse_claude_api_text))
         .filter_map(|result| match result {
             Ok(None) => None,
             Ok(Some(string)) => Some(Ok(string)),

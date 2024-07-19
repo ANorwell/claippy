@@ -27,6 +27,10 @@ impl Db {
         }
     }
 
+    pub fn path(&self) -> &PathBuf {
+        &self.path
+    }
+
     pub fn write_conversation(&self, conversation: &Conversation) -> Result<()> {
         let file_path = self.path.join(&conversation.id);
         fs::write(file_path, serde_json::to_string_pretty(conversation)?)?;
@@ -36,8 +40,12 @@ impl Db {
     pub fn create_conversation(&self, conversation_id: &str) -> Result<()> {
         let conversation = Conversation::empty(conversation_id);
         self.write_conversation(&conversation)?;
+        // Remove the symlink if there is one already
+        if self.path.join(Self::CURRENT_PATH).exists() {
+            std::fs::remove_file(self.path.join(Self::CURRENT_PATH))?;
+        }
         std::os::unix::fs::symlink(
-            self.path.join(&conversation_id),
+            self.path.join(conversation_id),
             self.path.join(Self::CURRENT_PATH),
         )?;
         Ok(())
@@ -45,7 +53,7 @@ impl Db {
 
     // Reads a conversation. If no conversation exists, creates and returns an empty one.
     pub fn read_conversation(&self, conversation_id: &str) -> Result<Conversation> {
-        let file_path = self.path.join(&conversation_id);
+        let file_path = self.path.join(conversation_id);
 
         if !file_path.exists() {
             let conversation_to_create = if conversation_id.eq(Self::CURRENT_PATH) {
