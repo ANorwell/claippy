@@ -1,4 +1,8 @@
-use std::{collections::HashSet, error::Error, fmt::{Display, Formatter, Write}};
+use std::{
+    collections::HashSet,
+    error::Error,
+    fmt::{Display, Formatter, Write},
+};
 
 use chrono::Utc;
 use regex::Regex;

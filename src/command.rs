@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use crate::{
     db::Db,
     model::{Artifact, Conversation, Result},
@@ -5,6 +7,8 @@ use crate::{
     repl::make_readline,
 };
 use rustyline::error::ReadlineError;
+use skim::prelude::*;
+use termimad::MadSkin;
 
 #[derive(Debug)]
 pub enum CliCmd {
@@ -51,12 +55,48 @@ pub trait Command {
     fn execute(self, model: &impl Queryable, db: &Db) -> Result<CmdOutput>;
 }
 
+fn show(skin: &MadSkin, src: &str) {
+    println!(" Raw       : {}", &src);
+    println!(" Formatted : {}\n", skin.inline(src));
+}
+
+fn show_some(skin: &MadSkin) {
+    show(skin, "*Hey* **World!** Here's `some(code)`");
+    show(skin, "some *nested **style***");
+}
+
 impl Command for CliCmd {
     fn execute(self, model: &impl Queryable, db: &Db) -> Result<CmdOutput> {
         match self {
             Self::Query { query } => handle_query(model, query, db),
             Self::Repl => handle_repl(model, db),
-            Self::AddWorkspaceContext { paths } => handle_add_workspace_contexts(db, paths),
+            Self::AddWorkspaceContext { paths } => {
+
+                use termimad::crossterm::style::{Attribute::*, Color::*};
+                use termimad::*;
+                println!();
+                println!("\nWith the default skin:\n");
+                let mut skin = MadSkin::default();
+                show_some(&skin);
+                println!("\nWith a customized skin:\n");
+                skin.bold.set_fg(Yellow);
+                skin.italic = CompoundStyle::with_bg(DarkBlue);
+                skin.inline_code.add_attr(Reverse);
+                show_some(&skin);
+
+                let mut skin = MadSkin::default();
+                skin.bold.set_fg(Yellow);
+                skin.print_inline("*Hey* **World!** Here's `some(code)`");
+                skin.paragraph.set_fgbg(Magenta, rgb(30, 30, 40));
+                skin.italic.add_attr(Underlined);
+                skin.italic.add_attr(OverLined);
+                println!(
+                    "\nand now {}\n",
+                    skin.inline("a little *too much* **style!** (and `some(code)` too)")
+                );
+
+                handle_add_workspace_contexts(db, paths)
+            },
             Self::NewConversation { conversation_id } => {
                 db.create_conversation(&conversation_id)?;
                 Ok(CmdOutput::Message(
@@ -89,6 +129,7 @@ impl Command for CliCmd {
 }
 
 fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOutput> {
+    let skin = MadSkin::default();
     let mut conversation = db.read_current_conversation()?;
     conversation.add_user_message(query)?;
     let query_response = model.generate(conversation.as_message_refs().into())?;
@@ -97,7 +138,7 @@ fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOut
 
     for chunk_result in query_response {
         let chunk = chunk_result?;
-        print!("{}", chunk);
+        print!("{}", skin.inline(&chunk));
         full_message += &chunk;
     }
 
@@ -137,8 +178,7 @@ fn handle_repl(model: &impl Queryable, db: &Db) -> Result<CmdOutput> {
                 let input = line.trim_start();
 
                 if let Some(cmd_str) = input.strip_prefix('!') {
-                    let cmd =
-                        CliCmd::parse_args(cmd_str.split_whitespace().map(String::from))?;
+                    let cmd = CliCmd::parse_args(cmd_str.split_whitespace().map(String::from))?;
                     match cmd.execute(model, db)? {
                         CmdOutput::Done => continue,
                         CmdOutput::Message(msg) => println!("{}", msg),
@@ -152,7 +192,6 @@ fn handle_repl(model: &impl Queryable, db: &Db) -> Result<CmdOutput> {
             }
             Err(err) => {
                 println!("Error: {:?}", err);
-                break;
             }
         }
 
