@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let db = Db::create()?;
 
     let config = BedrockConfig {
-        model_id: "anthropic.claude-3-sonnet-20240229-v1:0",
+        model_id: "anthropic.claude-3-5-sonnet-20240620-v1:0", //"anthropic.claude-3-sonnet-20240229-v1:0",
         system_prompt: system_prompt(),
         temperature: 0.3,
         region: "us-east-1",
