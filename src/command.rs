@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::io::{self, Write};
 
 use crate::{
     db::Db,
@@ -135,14 +135,29 @@ fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOut
     let query_response = model.generate(conversation.as_message_refs().into())?;
 
     let mut full_message = String::new();
+    let mut line_buffer = String::new();
 
     for chunk_result in query_response {
         let chunk = chunk_result?;
-        print!("{}", skin.inline(&chunk));
-        full_message += &chunk;
+        full_message.push_str(&chunk);
+
+        for c in chunk.chars() {
+            line_buffer.push(c);
+            if c == '\n' {
+                print!("{}", skin.inline(&line_buffer));
+                io::stdout().flush()?;
+                line_buffer.clear();
+            }
+        }
     }
 
-    println!("\n"); // and flush
+    // Flush any remaining content in the buffer
+    if !line_buffer.is_empty() {
+        print!("{}", skin.inline(&line_buffer));
+        io::stdout().flush()?;
+    }
+
+    println!(); // Print an extra newline and flush
 
     let artifact = Artifact::extract_from_message(&full_message);
 
