@@ -9,20 +9,20 @@ use aws_sdk_bedrockruntime::{
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
-use crate::model::{Message, MessageRefs, Result, ResultIterator};
+use crate::model::{Message, Messages, Result, ResultIterator};
 
 #[derive(Serialize)]
-struct ReqBody<'a> {
+struct ReqBody {
     anthropic_version: &'static str,
     max_tokens: i32,
     temperature: f32,
     system: &'static str,
-    messages: Vec<&'a Message>,
+    messages: Vec<Message>,
 }
 
 /// Queryable provides the interface that any LLM being queried should implement.
 pub trait Queryable {
-    fn generate(&self, query: MessageRefs) -> ResultIterator<Result<String>>;
+    fn generate(&self, query: Messages) -> ResultIterator<Result<String>>;
 }
 
 pub struct BedrockConfig {
@@ -63,7 +63,7 @@ impl Bedrock {
 }
 
 impl Queryable for Bedrock {
-    fn generate(&self, query: MessageRefs) -> ResultIterator<Result<String>> {
+    fn generate(&self, query: Messages) -> ResultIterator<Result<String>> {
         let body_str = serde_json::to_string(&ReqBody {
             anthropic_version: "bedrock-2023-05-31",
             max_tokens: 4096, // the maximum

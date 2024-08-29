@@ -5,7 +5,6 @@ use std::{
 };
 
 use chrono::Utc;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 pub type Result<T> = core::result::Result<T, Box<dyn Error>>;
@@ -21,68 +20,60 @@ pub struct Message {
 }
 
 #[derive(Serialize)]
-pub struct MessageRefs<'a> {
-    pub messages: Vec<&'a Message>,
+pub struct Messages {
+    pub messages: Vec<Message>,
 }
 
-impl MessageRefs<'_> {
-    pub fn new(messages: Vec<&Message>) -> MessageRefs {
-        MessageRefs { messages }
+impl Messages {
+    pub fn new(messages: Vec<Message>) -> Messages {
+        Messages { messages }
     }
 }
 
-impl<'a> From<Vec<&'a Message>> for MessageRefs<'a> {
-    fn from(messages: Vec<&'a Message>) -> Self {
-        MessageRefs { messages }
+impl From<Vec<Message>> for Messages {
+    fn from(messages: Vec<Message>) -> Self {
+        Messages { messages }
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Artifact {
-    pub id: String,
-    pub language: Option<String>,
-    pub src: Option<String>,
-    pub text: String,
-}
-
-impl Artifact {
-    pub fn extract_from_message(message: &str) -> Option<Artifact> {
-        let pattern = r"<ClaippyArtifact.*?</ClaippyArtifact>";
-        let re = Regex::new(pattern).unwrap();
-        re.captures(message)
-            .and_then(|cap| cap.get(0))
-            .and_then(|m| Artifact::parse_artifact_xml(m.as_str()))
-    }
-
-    fn parse_artifact_xml(xml: &str) -> Option<Artifact> {
-        let doc = roxmltree::Document::parse(xml).ok()?;
-        let elem = doc
-            .descendants()
-            .find(|n| n.tag_name().name() == "ClippyArtifact")?;
-
-        let id = elem.attribute("identifier")?;
-        let language: Option<String> = elem.attribute("language").map(|s| s.into());
-        let src: Option<String> = elem.attribute("src").map(|s| s.into());
-        let text = elem.text()?;
-
-        Some(Artifact {
-            id: id.into(),
-            language,
-            src,
-            text: text.into(),
-        })
+#[derive(Debug, Serialize, Deserialize)]
+pub enum MessageParts {
+    Markdown(String),
+    Artifact {
+        identifier: String,
+        language: Option<String>,
+        content: String,
     }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct RichMessage {
-    message: Message,
-    artifact: Option<Artifact>,
+    role: String,
+    parts: Vec<MessageParts>
 }
 
 impl RichMessage {
-    pub fn new(message: Message, artifact: Option<Artifact>) -> RichMessage {
-        RichMessage { message, artifact }
+    pub fn as_message(&self) -> Message {
+        let content = self.parts
+            .iter()
+            .map(|part| match part {
+                MessageParts::Markdown(text) => text.clone(),
+                MessageParts::Artifact { identifier, language, content } => {
+                    let lang_attr = language
+                        .as_ref()
+                        .map(|lang| format!(" language=\"{}\"", lang))
+                        .unwrap_or_default();
+                    format!("<ClaippyArtifact identifier=\"{}\"{}>\n{}\n</ClaippyArtifact>",
+                        identifier, lang_attr, content)
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n\n");
+
+        Message {
+            role: self.role.clone(),
+            content,
+        }
     }
 }
 
@@ -182,27 +173,19 @@ impl Conversation {
         Ok(())
     }
 
-    pub fn add_assistant_message(&mut self, message: String, artifact: Option<Artifact>) {
-        self.messages.push(RichMessage::new(
-            Message {
-                role: ASSISTANT_ROLE.to_owned(),
-                content: message,
-            },
-            artifact,
-        ));
+    pub fn add_assistant_message(&mut self, message: Vec<MessageParts>) {
+        self.messages.push(RichMessage { role: ASSISTANT_ROLE.to_owned(), parts: message });
     }
 
-    pub fn as_message_refs(&self) -> Vec<&Message> {
-        self.messages.iter().map(|rich| &rich.message).collect()
+
+    pub fn as_messages(&self) -> Vec<Message> {
+        self.messages.iter().map(|rich| rich.as_message()).collect()
     }
 
     fn user_message(&self, content: String) -> RichMessage {
-        RichMessage::new(
-            Message {
-                role: USER_ROLE.to_owned(),
-                content,
-            },
-            None,
-        )
+        RichMessage {
+            role: USER_ROLE.to_owned(),
+            parts: vec!(MessageParts::Markdown(content)),
+        }
     }
 }

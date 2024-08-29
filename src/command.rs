@@ -1,13 +1,14 @@
 use std::io::{self, Write};
 
+use crate::model::MessageParts;
 use crate::{
     db::Db,
-    model::{Artifact, Conversation, Result},
+    model::{Conversation, Result},
     query::Queryable,
     repl::make_readline,
 };
+use regex::Regex;
 use rustyline::error::ReadlineError;
-use skim::prelude::*;
 use termimad::MadSkin;
 
 #[derive(Debug)]
@@ -18,6 +19,7 @@ pub enum CliCmd {
     Query { query: String },
     Clear,
     ListWorkspaceContext,
+    History
 }
 
 pub enum CmdOutput {
@@ -44,6 +46,7 @@ impl CliCmd {
             "clear" => Ok(CliCmd::Clear),
             "ls" => Ok(CliCmd::ListWorkspaceContext),
             "repl" => Ok(CliCmd::Repl),
+            "history" => Ok(CliCmd::History),
             other => Err(format!("Unknown command: {other}")),
         }?;
 
@@ -55,46 +58,12 @@ pub trait Command {
     fn execute(self, model: &impl Queryable, db: &Db) -> Result<CmdOutput>;
 }
 
-fn show(skin: &MadSkin, src: &str) {
-    println!(" Raw       : {}", &src);
-    println!(" Formatted : {}\n", skin.inline(src));
-}
-
-fn show_some(skin: &MadSkin) {
-    show(skin, "*Hey* **World!** Here's `some(code)`");
-    show(skin, "some *nested **style***");
-}
-
 impl Command for CliCmd {
     fn execute(self, model: &impl Queryable, db: &Db) -> Result<CmdOutput> {
         match self {
             Self::Query { query } => handle_query(model, query, db),
             Self::Repl => handle_repl(model, db),
             Self::AddWorkspaceContext { paths } => {
-
-                use termimad::crossterm::style::{Attribute::*, Color::*};
-                use termimad::*;
-                println!();
-                println!("\nWith the default skin:\n");
-                let mut skin = MadSkin::default();
-                show_some(&skin);
-                println!("\nWith a customized skin:\n");
-                skin.bold.set_fg(Yellow);
-                skin.italic = CompoundStyle::with_bg(DarkBlue);
-                skin.inline_code.add_attr(Reverse);
-                show_some(&skin);
-
-                let mut skin = MadSkin::default();
-                skin.bold.set_fg(Yellow);
-                skin.print_inline("*Hey* **World!** Here's `some(code)`");
-                skin.paragraph.set_fgbg(Magenta, rgb(30, 30, 40));
-                skin.italic.add_attr(Underlined);
-                skin.italic.add_attr(OverLined);
-                println!(
-                    "\nand now {}\n",
-                    skin.inline("a little *too much* **style!** (and `some(code)` too)")
-                );
-
                 handle_add_workspace_contexts(db, paths)
             },
             Self::NewConversation { conversation_id } => {
@@ -123,47 +92,121 @@ impl Command for CliCmd {
                         .collect::<Vec<String>>()
                         .join("\n");
                 Ok(CmdOutput::Message(context_display))
-            }
+            },
+            Self::History => todo!("not implemented")
         }
     }
 }
 
-fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOutput> {
+
+
+fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOutput>  {
     let skin = MadSkin::default();
     let mut conversation = db.read_current_conversation()?;
     conversation.add_user_message(query)?;
-    let query_response = model.generate(conversation.as_message_refs().into())?;
+    let query_response = model.generate(conversation.as_messages().into())?;
 
-    let mut full_message = String::new();
-    let mut line_buffer = String::new();
+    let mut full_content = String::new();
+    let mut current_line = String::new();
 
     for chunk_result in query_response {
         let chunk = chunk_result?;
-        full_message.push_str(&chunk);
-
         for c in chunk.chars() {
-            line_buffer.push(c);
             if c == '\n' {
-                print!("{}", skin.inline(&line_buffer));
+                // Process and print the completed line
+                print!("{}", skin.inline(&current_line));
+                print!("\n");
                 io::stdout().flush()?;
-                line_buffer.clear();
+                full_content.push_str(&current_line);
+                full_content.push('\n');
+                current_line.clear();
+            } else {
+                current_line.push(c);
             }
         }
     }
 
-    // Flush any remaining content in the buffer
-    if !line_buffer.is_empty() {
-        print!("{}", skin.inline(&line_buffer));
+    // If there's any remaining content in current_line, print it
+    if !current_line.is_empty() {
+        print!("{}", skin.inline(&current_line));
         io::stdout().flush()?;
+        full_content.push_str(&current_line);
     }
 
-    println!(); // Print an extra newline and flush
+    let parsed_message = parse_message_parts(full_content);
+    print!("\n\n====Rendered message\n");
+    print!("{}", format_message(&skin, &parsed_message));
 
-    let artifact = Artifact::extract_from_message(&full_message);
-
-    conversation.add_assistant_message(full_message, artifact);
+    conversation.add_assistant_message(parsed_message);
     db.write_conversation(&conversation)?;
     Ok(CmdOutput::Done)
+}
+
+const CLAIPPY_ARTIFACT: &str = "ClaippyArtifact";
+
+fn parse_message_parts(full_content: String) -> Vec<MessageParts> {
+    let mut parts = Vec::new();
+    let artifact_regex = Regex::new(&format!(r#"<{}\s+([^>]+)>([\s\S]?)</{}>"#, CLAIPPY_ARTIFACT, CLAIPPY_ARTIFACT)).unwrap();
+    let mut last_end = 0;
+
+    for cap in artifact_regex.captures_iter(&full_content) {
+        let start = cap.get(0).unwrap().start();
+        let end = cap.get(0).unwrap().end();
+
+        // Add any text before the artifact as Markdown
+        if start > last_end {
+            parts.push(MessageParts::Markdown(full_content[last_end..start].to_string()));
+        }
+
+        // Parse attributes
+        let attrs = cap.get(1).unwrap().as_str();
+        let identifier_regex = Regex::new(r#"identifier="([^"]+)""#).unwrap();
+        let language_regex = Regex::new(r#"language="([^"]+)""#).unwrap();
+
+        let identifier = identifier_regex.captures(attrs)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let language = language_regex.captures(attrs)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_string());
+
+        // Add the artifact
+        parts.push(MessageParts::Artifact {
+            identifier,
+            language,
+            content: cap.get(2).unwrap().as_str().to_string(),
+        });
+
+        last_end = end;
+    }
+
+    // Add any remaining text as Markdown
+    if last_end < full_content.len() {
+        parts.push(MessageParts::Markdown(full_content[last_end..].to_string()));
+    }
+
+    parts
+}
+
+fn format_message(skin: &MadSkin, full_message: &[MessageParts]) -> String {
+    let mut formatted = String::new();
+    for part in full_message {
+        match part {
+            MessageParts::Markdown(text) => {
+                formatted.push_str(&skin.term_text(text).to_string());
+            }
+            MessageParts::Artifact { identifier, language, content } => {
+                formatted.push_str(&format!("\nArtifact: {} (Language: {})\n", identifier,
+    language.as_deref().unwrap_or("None")));
+                formatted.push_str(&skin.term_text(content).to_string());
+                formatted.push_str("\n");
+            }
+        }
+    }
+
+    formatted
 }
 
 fn handle_add_workspace_contexts(db: &Db, paths: Vec<String>) -> Result<CmdOutput> {
