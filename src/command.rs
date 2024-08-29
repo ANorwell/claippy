@@ -11,6 +11,11 @@ use regex::Regex;
 use rustyline::error::ReadlineError;
 use termimad::MadSkin;
 
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{ThemeSet, Style};
+use syntect::parsing::SyntaxSet;
+use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
+
 #[derive(Debug)]
 pub enum CliCmd {
     NewConversation { conversation_id: String },
@@ -146,12 +151,14 @@ const CLAIPPY_ARTIFACT: &str = "ClaippyArtifact";
 
 fn parse_message_parts(full_content: String) -> Vec<MessageParts> {
     let mut parts = Vec::new();
-    let artifact_regex = Regex::new(&format!(r#"<{}\s+([^>]+)>([\s\S]?)</{}>"#, CLAIPPY_ARTIFACT, CLAIPPY_ARTIFACT)).unwrap();
+    let artifact_regex = Regex::new(&format!(r"(?ms)<{}\s+([^>]+)>(.?)</{}>", CLAIPPY_ARTIFACT, CLAIPPY_ARTIFACT)).unwrap();
     let mut last_end = 0;
 
     for cap in artifact_regex.captures_iter(&full_content) {
         let start = cap.get(0).unwrap().start();
         let end = cap.get(0).unwrap().end();
+
+        log::info!("Capture {start:?} {end:?} ");
 
         // Add any text before the artifact as Markdown
         if start > last_end {
@@ -185,6 +192,7 @@ fn parse_message_parts(full_content: String) -> Vec<MessageParts> {
     // Add any remaining text as Markdown
     if last_end < full_content.len() {
         parts.push(MessageParts::Markdown(full_content[last_end..].to_string()));
+        log::info!("Emitted final markdown part")
     }
 
     parts
@@ -192,6 +200,11 @@ fn parse_message_parts(full_content: String) -> Vec<MessageParts> {
 
 fn format_message(skin: &MadSkin, full_message: &[MessageParts]) -> String {
     let mut formatted = String::new();
+
+    // Load these once at the start of your program
+    let ps = SyntaxSet::load_defaults_newlines();
+    let ts = ThemeSet::load_defaults();
+
     for part in full_message {
         match part {
             MessageParts::Markdown(text) => {
@@ -199,8 +212,30 @@ fn format_message(skin: &MadSkin, full_message: &[MessageParts]) -> String {
             }
             MessageParts::Artifact { identifier, language, content } => {
                 formatted.push_str(&format!("\nArtifact: {} (Language: {})\n", identifier,
-    language.as_deref().unwrap_or("None")));
-                formatted.push_str(&skin.term_text(content).to_string());
+                    language.as_deref().unwrap_or("None")));
+
+                // Use syntect for syntax highlighting
+                if let Some(lang) = language {
+                    if let Some(syntax) = ps.find_syntax_by_extension(lang) {
+                        let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+                        let mut highlighted = String::new();
+
+                        for line in LinesWithEndings::from(content) {
+                            let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
+                            let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
+                            highlighted.push_str(&escaped);
+                        }
+
+                        formatted.push_str(&highlighted);
+                    } else {
+                        // Fallback to regular formatting if syntax is not found
+                        formatted.push_str(&skin.term_text(content).to_string());
+                    }
+                } else {
+                    // No language specified, use regular formatting
+                    formatted.push_str(&skin.term_text(content).to_string());
+                }
+
                 formatted.push_str("\n");
             }
         }
@@ -242,14 +277,16 @@ fn handle_repl(model: &impl Queryable, db: &Db) -> Result<CmdOutput> {
                         CmdOutput::Message(msg) => println!("{}", msg),
                     }
                 } else {
-                    handle_query(model, input.to_string(), db)?;
+                    if let Err(e) = handle_query(model, input.to_string(), db) {
+                        println!("Query Error: {:?}", e);
+                    }
                 }
             }
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
                 break;
             }
             Err(err) => {
-                println!("Error: {:?}", err);
+                println!("Read Error: {:?}", err);
             }
         }
 

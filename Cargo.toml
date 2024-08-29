@@ -19,3 +19,4 @@ rustyline = { version = "14.0.0", features = ["derive"] }
 colored = "2.1.0"
 skim = "0.10.4"
 termimad = "0.29.4"
+syntect = "5.2.0"
