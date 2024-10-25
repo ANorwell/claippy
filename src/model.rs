@@ -43,28 +43,35 @@ pub enum MessageParts {
         identifier: String,
         language: Option<String>,
         content: String,
-    }
+    },
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct RichMessage {
     role: String,
-    parts: Vec<MessageParts>
+    parts: Vec<MessageParts>,
 }
 
 impl RichMessage {
     pub fn as_message(&self) -> Message {
-        let content = self.parts
+        let content = self
+            .parts
             .iter()
             .map(|part| match part {
                 MessageParts::Markdown(text) => text.clone(),
-                MessageParts::Artifact { identifier, language, content } => {
+                MessageParts::Artifact {
+                    identifier,
+                    language,
+                    content,
+                } => {
                     let lang_attr = language
                         .as_ref()
                         .map(|lang| format!(" language=\"{}\"", lang))
                         .unwrap_or_default();
-                    format!("<ClaippyArtifact identifier=\"{}\"{}>\n{}\n</ClaippyArtifact>",
-                        identifier, lang_attr, content)
+                    format!(
+                        "<ClaippyArtifact identifier=\"{}\"{}>\n{}\n</ClaippyArtifact>",
+                        identifier, lang_attr, content
+                    )
                 }
             })
             .collect::<Vec<String>>()
@@ -174,9 +181,11 @@ impl Conversation {
     }
 
     pub fn add_assistant_message(&mut self, message: Vec<MessageParts>) {
-        self.messages.push(RichMessage { role: ASSISTANT_ROLE.to_owned(), parts: message });
+        self.messages.push(RichMessage {
+            role: ASSISTANT_ROLE.to_owned(),
+            parts: message,
+        });
     }
-
 
     pub fn as_messages(&self) -> Vec<Message> {
         self.messages.iter().map(|rich| rich.as_message()).collect()
@@ -185,7 +194,7 @@ impl Conversation {
     fn user_message(&self, content: String) -> RichMessage {
         RichMessage {
             role: USER_ROLE.to_owned(),
-            parts: vec!(MessageParts::Markdown(content)),
+            parts: vec![MessageParts::Markdown(content)],
         }
     }
 }

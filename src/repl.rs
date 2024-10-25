@@ -63,7 +63,7 @@ pub fn make_readline(prompt: &str) -> Result<Editor<ReplHelper, DefaultHistory>,
     let helper = ReplHelper::new(prompt);
     rl.set_helper(Some(helper));
     rl.bind_sequence(
-        KeyEvent::ctrl('h'),
+        KeyEvent::ctrl('j'),
         EventHandler::Conditional(Box::new(SkimInserter)),
     );
 
@@ -80,10 +80,7 @@ impl ConditionalEventHandler for SkimInserter {
         _positive: bool,
         _ctx: &rustyline::EventContext,
     ) -> Option<rustyline::Cmd> {
-        let options = SkimOptionsBuilder::default()
-            .multi(true)
-            .build()
-            .unwrap();
+        let options = SkimOptionsBuilder::default().multi(true).build().unwrap();
 
         let input = "aaaaa\nbbbb\nccc".to_string();
 

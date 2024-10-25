@@ -16,6 +16,7 @@ struct ReqBody {
     anthropic_version: &'static str,
     max_tokens: i32,
     temperature: f32,
+    top_p: f32,
     system: &'static str,
     messages: Vec<Message>,
 }
@@ -29,6 +30,7 @@ pub struct BedrockConfig {
     pub model_id: &'static str,
     pub system_prompt: &'static str,
     pub temperature: f32,
+    pub top_p: f32,
     pub region: &'static str,
     pub aws_profile_name: &'static str,
 }
@@ -68,6 +70,7 @@ impl Queryable for Bedrock {
             anthropic_version: "bedrock-2023-05-31",
             max_tokens: 4096, // the maximum
             temperature: self.model_config.temperature,
+            top_p: self.model_config.top_p,
             system: self.model_config.system_prompt,
             messages: query.messages,
         })?;

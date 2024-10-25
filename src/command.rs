@@ -7,12 +7,14 @@ use crate::{
     query::Queryable,
     repl::make_readline,
 };
+use colored::Colorize;
 use regex::Regex;
 use rustyline::error::ReadlineError;
-use termimad::MadSkin;
+use termimad::crossterm::style::Stylize;
+use termimad::{MadSkin, terminal_size};
 
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{ThemeSet, Style};
+use syntect::highlighting::{Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
 
@@ -24,7 +26,7 @@ pub enum CliCmd {
     Query { query: String },
     Clear,
     ListWorkspaceContext,
-    History
+    History,
 }
 
 pub enum CmdOutput {
@@ -34,7 +36,7 @@ pub enum CmdOutput {
 
 impl CliCmd {
     pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<CliCmd> {
-        let cmd = args.next().ok_or("No command provided")?;
+        let cmd = args.next().unwrap_or("repl".to_owned());
 
         let cmd = match cmd.as_str() {
             "query" | "q" => Ok(CliCmd::Query {
@@ -68,9 +70,7 @@ impl Command for CliCmd {
         match self {
             Self::Query { query } => handle_query(model, query, db),
             Self::Repl => handle_repl(model, db),
-            Self::AddWorkspaceContext { paths } => {
-                handle_add_workspace_contexts(db, paths)
-            },
+            Self::AddWorkspaceContext { paths } => handle_add_workspace_contexts(db, paths),
             Self::NewConversation { conversation_id } => {
                 db.create_conversation(&conversation_id)?;
                 Ok(CmdOutput::Message(
@@ -97,15 +97,22 @@ impl Command for CliCmd {
                         .collect::<Vec<String>>()
                         .join("\n");
                 Ok(CmdOutput::Message(context_display))
-            },
-            Self::History => todo!("not implemented")
+            }
+            Self::History => {
+                let conversation = db.read_current_conversation()?;
+                let skin = MadSkin::default();
+                for message in conversation.as_messages() {
+                    println!("{}", message.role.blue().bold());
+                    let parts = parse_message_parts(message.content);
+                    println!("{}", format_message(&skin, &parts));
+                }
+                Ok(CmdOutput::Done)
+            }
         }
     }
 }
 
-
-
-fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOutput>  {
+fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOutput> {
     let skin = MadSkin::default();
     let mut conversation = db.read_current_conversation()?;
     conversation.add_user_message(query)?;
@@ -114,13 +121,16 @@ fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOut
     let mut full_content = String::new();
     let mut current_line = String::new();
 
+    let mut line_count = 1;
+
     for chunk_result in query_response {
         let chunk = chunk_result?;
         for c in chunk.chars() {
             if c == '\n' {
                 // Process and print the completed line
                 print!("{}", skin.inline(&current_line));
-                print!("\n");
+                println!();
+                line_count += 1;
                 io::stdout().flush()?;
                 full_content.push_str(&current_line);
                 full_content.push('\n');
@@ -134,24 +144,40 @@ fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOut
     // If there's any remaining content in current_line, print it
     if !current_line.is_empty() {
         print!("{}", skin.inline(&current_line));
+        println!();
+        line_count += 1;
         io::stdout().flush()?;
         full_content.push_str(&current_line);
     }
 
+    erase_last_n_lines_simple(line_count);
     let parsed_message = parse_message_parts(full_content);
-    print!("\n\n====Rendered message\n");
-    print!("{}", format_message(&skin, &parsed_message));
+    println!("{}", format_message(&skin, &parsed_message));
 
     conversation.add_assistant_message(parsed_message);
     db.write_conversation(&conversation)?;
     Ok(CmdOutput::Done)
 }
 
+fn erase_last_n_lines_simple(n: usize) {
+    // Move up N lines
+    print!("\x1b[{}A", n);
+    // Clear from cursor down
+    print!("\x1b[J");
+    // Flush stdout
+    std::io::stdout().flush().unwrap();
+}
+
 const CLAIPPY_ARTIFACT: &str = "ClaippyArtifact";
 
 fn parse_message_parts(full_content: String) -> Vec<MessageParts> {
     let mut parts = Vec::new();
-    let artifact_regex = Regex::new(&format!(r"(?ms)<{}\s+([^>]+)>(.?)</{}>", CLAIPPY_ARTIFACT, CLAIPPY_ARTIFACT)).unwrap();
+    // Ideally use a real XML parser here instead
+    let artifact_regex = Regex::new(&format!(
+        r"(?ms)<{}\s*([^>]*?)>(.*?)</{}>",
+        CLAIPPY_ARTIFACT, CLAIPPY_ARTIFACT
+    ))
+    .unwrap();
     let mut last_end = 0;
 
     for cap in artifact_regex.captures_iter(&full_content) {
@@ -162,7 +188,9 @@ fn parse_message_parts(full_content: String) -> Vec<MessageParts> {
 
         // Add any text before the artifact as Markdown
         if start > last_end {
-            parts.push(MessageParts::Markdown(full_content[last_end..start].to_string()));
+            parts.push(MessageParts::Markdown(
+                full_content[last_end..start].to_string(),
+            ));
         }
 
         // Parse attributes
@@ -170,12 +198,14 @@ fn parse_message_parts(full_content: String) -> Vec<MessageParts> {
         let identifier_regex = Regex::new(r#"identifier="([^"]+)""#).unwrap();
         let language_regex = Regex::new(r#"language="([^"]+)""#).unwrap();
 
-        let identifier = identifier_regex.captures(attrs)
+        let identifier = identifier_regex
+            .captures(attrs)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
-        let language = language_regex.captures(attrs)
+        let language = language_regex
+            .captures(attrs)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_string());
 
@@ -201,39 +231,57 @@ fn parse_message_parts(full_content: String) -> Vec<MessageParts> {
 fn format_message(skin: &MadSkin, full_message: &[MessageParts]) -> String {
     let mut formatted = String::new();
 
-    // Load these once at the start of your program
     let ps = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
+
+    let (term_width, _height) = terminal_size();
 
     for part in full_message {
         match part {
             MessageParts::Markdown(text) => {
                 formatted.push_str(&skin.term_text(text).to_string());
             }
-            MessageParts::Artifact { identifier, language, content } => {
-                formatted.push_str(&format!("\nArtifact: {} (Language: {})\n", identifier,
-                    language.as_deref().unwrap_or("None")));
+            MessageParts::Artifact {
+                identifier,
+                language,
+                content,
+            } => {
+                let artifact_intro = format!(
+                    "[Artifact: {} ({})]\n",
+                    identifier,
+                    language.as_deref().unwrap_or("None"));
+                formatted.push_str(&format!("{}", artifact_intro.dim()));
 
-                // Use syntect for syntax highlighting
                 if let Some(lang) = language {
-                    if let Some(syntax) = ps.find_syntax_by_extension(lang) {
+                    log::info!("Language: {}", lang);
+
+                    if let Some(syntax) = ps.syntaxes().iter().find(|s| {
+                        s.name.to_lowercase() == *lang || s.file_extensions.contains(lang)
+                    }) {
                         let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
                         let mut highlighted = String::new();
 
                         for line in LinesWithEndings::from(content) {
                             let ranges: Vec<(Style, &str)> = h.highlight_line(line, &ps).unwrap();
                             let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
+                            // Sets the line length to the term with, which allows the background formatting to
+                            // extend to this length, which looks nicer.
+                            highlighted.push_str(&format!("\x1b[{}X", term_width));
                             highlighted.push_str(&escaped);
+
                         }
+                        highlighted.push_str("\x1b[0m"); // clear syntax, not handled by library
 
                         formatted.push_str(&highlighted);
                     } else {
+                        log::warn!("No syntax found for language {}", lang);
+
                         // Fallback to regular formatting if syntax is not found
-                        formatted.push_str(&skin.term_text(content).to_string());
+                        formatted.push_str(&content);
                     }
                 } else {
                     // No language specified, use regular formatting
-                    formatted.push_str(&skin.term_text(content).to_string());
+                    formatted.push_str(&content);
                 }
 
                 formatted.push_str("\n");
@@ -253,8 +301,8 @@ fn handle_add_workspace_contexts(db: &Db, paths: Vec<String>) -> Result<CmdOutpu
 }
 
 fn handle_repl(model: &impl Queryable, db: &Db) -> Result<CmdOutput> {
-    let prompt = "> ";
-    let mut rl = make_readline(prompt)?;
+    let prompt = format!("{}", Colorize::bold("claippy> ").cyan());
+    let mut rl = make_readline(&prompt)?;
 
     let repl_history_path = db.path().join(".claippy-repl-history");
 
@@ -263,7 +311,7 @@ fn handle_repl(model: &impl Queryable, db: &Db) -> Result<CmdOutput> {
     }
 
     loop {
-        let readline = rl.readline(prompt);
+        let readline = rl.readline(&prompt);
         match readline {
             Ok(line) if line.trim().is_empty() => continue,
             Ok(line) => {
