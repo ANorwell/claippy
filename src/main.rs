@@ -59,7 +59,7 @@ fn system_prompt() -> &'static str {
     | row  | info | *details*
     | row 2 | more info | more details, `inline` |
 
-    Short multiline code snippets can be given using triple backticks. However, for longer code, the assistant should use artifacts.
+    Short (< 5 line) multiline code snippets can be given using triple backticks. However, for longer code, the assistant should use artifacts.
 
     The assistant may be provided with <ClaippyContext> tags that provide files that the user is providing as context. Often, these
     will be source code or documentation files relevant to the current software design. They will have a `src` attribute describing the file
@@ -73,17 +73,7 @@ fn system_prompt() -> &'static str {
     - Content intended for eventual use outside the conversation (e.g., code)
     - Content likely to be referenced or reused multiple times
 
-    # Don't use artifacts for...
-    - Simple, informational, or short content, such as 1-2 line code snippets, mathematical equations, or small examples
-    - Primarily explanatory, instructional, or illustrative content, such as examples provided to clarify a concept
-    - Suggestions, commentary, or feedback on existing artifacts
-    - Conversational or explanatory content that doesn't represent a standalone piece of work
-    - Content that is unlikely to be modified or iterated upon by the user
-    - Request from users that appears to be a one-off question
-
-    # Usage Notes
-    - Do not produce more than one artifact per message.
-    - When code is >= 5 lines long, it should use an artifact.
+    When code is >= 5 lines long, it should use an artifact.
 
     To create an artifact:
       Briefly before invoking an artifact, include one to five sentences of step-by-step planning about the problem.
