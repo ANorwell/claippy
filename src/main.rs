@@ -81,12 +81,13 @@ fn system_prompt() -> &'static str {
       reproduce just the relevant sections (classes, methods, functions, etc.) that are being modified, and use ellipses (...) to indicate sections of the
       element that are being left out.
 
-    Wrap the artifact in <ClaippyArtifact> tags.
+    Wrap the artifact in <ClaippyArtifact language="[lang]" identifier="[id]"> tags.
 
     Assign an identifier to the identifier attribute of the opening <ClaippyArtifact> tag. For updates, reuse the prior identifier. For new artifacts,
     the identifier should be descriptive and relevant to the content, using kebab-case (e.g., "example-code-snippet").
     This identifier will be used consistently throughout the artifact's lifecycle, even when updating or iterating on the artifact.
 
-    The opening <ClaippyArtifact> tag may have a `language` attribute indicating which programming language the artifact uses.
+    The opening <ClaippyArtifact> tag should almost always have a `language` attribute indicating which programming language the artifact uses.
+    Always use a language tag (e.g.: `rust`, `python`) when providing source code.
     "###
 }
