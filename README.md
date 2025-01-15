@@ -2,6 +2,33 @@
 
 Claippy is a command-line tool that provides an interactive interface for code assistance and conversation management.
 
+## Example Workflow
+
+```
+# Create an empty conversation
+❯ cl new
+Created conversation -2025-01-15T18:53:37.969677819+00:00
+
+# Add files or URLs as context
+❯ cl add src/repl.rs src/main.rs
+Added context:
+src/repl.rs
+src/main.rs
+
+# enter REPL mode
+cl
+
+# Run a command from the repl
+claippy> !add src/command.rs
+Added context:
+src/command.rs
+
+# Interact with claippy
+claippy> please implement a remove from context command
+I'll help implement a remove from context command. Let's break this down into steps:
+...
+```
+
 ## Commands
 
 ### Basic Commands
