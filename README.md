@@ -16,7 +16,7 @@ src/repl.rs
 src/main.rs
 
 # enter REPL mode
-cl
+❯ cl
 
 # Run a command from the repl
 claippy> !add src/command.rs
