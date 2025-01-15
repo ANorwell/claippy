@@ -52,6 +52,27 @@ Claippy is a command-line tool that provides an interactive interface for code a
   claippy ls
   ```
 
+#### Usage with fzf
+
+[fzf](https://github.com/junegunn/fzf) is a command line fuzzy finder tool. Setting
+up fzf reduces friction with selecting source code files with the add command.
+
+For example, in `zsh` the following turns ctrl-h into a project file selection shortcut:
+
+``` sh
+populate-git-file() {
+    dir=$(git rev-parse --show-toplevel 2>/dev/null || echo '.')
+    files=$(rg --files $dir | fzf -m --height=15 --reverse | paste -s -)
+    if [[ -n $files ]]; then
+        LBUFFER+="${files}"
+    fi
+    zle reset-prompt
+}
+zle -N populate-git-file
+bindkey "^h" populate-git-file
+```
+
+
 ### REPL Commands
 
 When in REPL mode, you can use these commands by prefixing them with `!`:
@@ -81,3 +102,11 @@ claippy repl
 claippy> How can I improve this code?
 claippy> !clear  # Clear the conversation
 claippy> !ls     # Check current context
+
+
+
+## TODO
+
+- REPL-based file selection
+- Better configuration
+- Better streaming source code highlighting?
