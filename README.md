@@ -129,8 +129,7 @@ claippy repl
 claippy> How can I improve this code?
 claippy> !clear  # Clear the conversation
 claippy> !ls     # Check current context
-
-
+```
 
 ## TODO
 
