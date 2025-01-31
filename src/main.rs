@@ -87,7 +87,8 @@ fn system_prompt() -> &'static str {
     the identifier should be descriptive and relevant to the content, using kebab-case (e.g., "example-code-snippet").
     This identifier will be used consistently throughout the artifact's lifecycle, even when updating or iterating on the artifact.
 
-    The opening <ClaippyArtifact> tag should always have a `language` attribute indicating which programming language the artifact uses. 
-    Always use a language tag (e.g.: `rust`, `python`) when providing source code. Use markdown for text artifacts.
+    The opening <ClaippyArtifact> tag should almost always have a `language` attribute indicating which programming language the artifact uses.
+    Very important: ALWAYS use a language tag in the ClaippyArtifact element (e.g.: `language="rust"`, `language="python"`) when providing source
+    code. Use a markdown language tag for text artifacts.
     "###
 }
