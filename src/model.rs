@@ -159,6 +159,27 @@ impl Conversation {
         Ok(())
     }
 
+    /// Removes specified paths from both seen and unseen context
+    pub fn remove_workspace_contexts(&mut self, paths: &[String]) -> Result<()> {
+        // Convert paths to WorkspaceContext objects
+        let contexts_to_remove: Vec<WorkspaceContext> = paths
+            .iter()
+            .map(|path| WorkspaceContext::from(path.clone()))
+            .collect();
+
+        // Remove from seen context
+        for ctx in &contexts_to_remove {
+            self.seen_context.remove(ctx);
+        }
+
+        // Remove from unseen context
+        for ctx in &contexts_to_remove {
+            self.unseen_context.remove(ctx);
+        }
+
+        Ok(())
+    }
+
     // Clears the conversation, but not the context (all context will become unseen)
     pub fn clear(&mut self) -> Result<()> {
         self.messages.clear();

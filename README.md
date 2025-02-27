@@ -65,21 +65,55 @@ I'll help implement a remove from context command. Let's break this down into st
   claippy history
   ```
 
-### Context Management
+## Context Management
 
-- `add` or `a`: Add workspace context (files/directories)
-  ```bash
-  claippy add src/main.rs
-  # or multiple files
-  claippy a src/*.rs
-  ```
+Claippy allows you to manage the context provided to the assistant during conversations.
 
-- `ls`: List current workspace context
-  ```bash
-  claippy ls
-  ```
+### Adding Context
 
-#### Usage with fzf
+Add files or URLs to the conversation context:
+
+```
+claippy> !add src/main.rs src/lib.rs
+```
+
+or the shorter form:
+
+```
+claippy> !a https://example.com/api-docs.html
+```
+
+### Removing Context
+
+Remove files or URLs from the conversation context:
+
+```
+claippy> !remove src/main.rs src/lib.rs
+```
+
+or the shorter form:
+
+```
+claippy> !rm https://example.com/api-docs.html
+```
+
+### Listing Context
+
+List all files and URLs currently in the conversation context:
+
+```
+claippy> !ls
+```
+
+### Clearing All Messages
+
+Clear all messages in the conversation while keeping the context:
+
+```
+claippy> !clear
+```
+
+## Usage with fzf
 
 [fzf](https://github.com/junegunn/fzf) is a command line fuzzy finder tool. Setting
 up fzf reduces friction with selecting source code files with the add command.
@@ -100,7 +134,7 @@ bindkey "^h" populate-git-file
 ```
 
 
-### REPL Commands
+## REPL Commands
 
 When in REPL mode, you can use these commands by prefixing them with `!`:
 
@@ -123,7 +157,7 @@ claippy new rust-project
 claippy add src/*.rs
 
 # Start an interactive session
-claippy repl
+claippy
 
 # In REPL mode:
 claippy> How can I improve this code?

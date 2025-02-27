@@ -22,6 +22,7 @@ use syntect::util::{as_24_bit_terminal_escaped, LinesWithEndings};
 pub enum CliCmd {
     NewConversation { conversation_id: String },
     AddWorkspaceContext { paths: Vec<String> },
+    RemoveWorkspaceContext { paths: Vec<String> },
     Repl,
     Query { query: String },
     Clear,
@@ -50,6 +51,9 @@ impl CliCmd {
             "add" | "a" => Ok(CliCmd::AddWorkspaceContext {
                 paths: args.collect(),
             }),
+            "remove" | "rm" => Ok(CliCmd::RemoveWorkspaceContext {
+                paths: args.collect(),
+            }),
             "clear" => Ok(CliCmd::Clear),
             "ls" => Ok(CliCmd::ListWorkspaceContext),
             "repl" => Ok(CliCmd::Repl),
@@ -71,6 +75,7 @@ impl Command for CliCmd {
             Self::Query { query } => handle_query(model, query, db),
             Self::Repl => handle_repl(model, db),
             Self::AddWorkspaceContext { paths } => handle_add_workspace_contexts(db, paths),
+            Self::RemoveWorkspaceContext { paths } => handle_remove_workspace_contexts(db, paths),
             Self::NewConversation { conversation_id } => {
                 db.create_conversation(&conversation_id)?;
                 Ok(CmdOutput::Message(
@@ -296,6 +301,14 @@ fn handle_add_workspace_contexts(db: &Db, paths: Vec<String>) -> Result<CmdOutpu
     let mut conversation = db.read_current_conversation()?;
     let context_display = "Added context:\n".to_owned() + &paths.join("\n");
     conversation.add_workspace_contexts(paths)?;
+    db.write_conversation(&conversation)?;
+    Ok(CmdOutput::Message(context_display))
+}
+
+fn handle_remove_workspace_contexts(db: &Db, paths: Vec<String>) -> Result<CmdOutput> {
+    let mut conversation = db.read_current_conversation()?;
+    let context_display = "Removed context:\n".to_owned() + &paths.join("\n");
+    conversation.remove_workspace_contexts(&paths)?;
     db.write_conversation(&conversation)?;
     Ok(CmdOutput::Message(context_display))
 }
