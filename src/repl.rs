@@ -1,13 +1,13 @@
 use std::{borrow::Cow, io::Cursor};
 
 use colored::Colorize;
+use ignore::WalkBuilder;
 use rustyline::{
     completion::FilenameCompleter,
     error::ReadlineError,
     highlight::{Highlighter, MatchingBracketHighlighter},
     hint::HistoryHinter,
     history::DefaultHistory,
-    validate::MatchingBracketValidator,
     Completer, ConditionalEventHandler, Editor, EventHandler, Helper, Hinter, KeyEvent, Validator,
 };
 use skim::prelude::*;
@@ -18,7 +18,7 @@ pub struct ReplHelper {
     completer: FilenameCompleter,
     highlighter: MatchingBracketHighlighter,
     #[rustyline(Validator)]
-    validator: MatchingBracketValidator,
+    validator: (),
     #[rustyline(Hinter)]
     hinter: HistoryHinter,
     colored_prompt: String,
@@ -29,7 +29,7 @@ impl ReplHelper {
         Self {
             completer: FilenameCompleter::new(),
             highlighter: MatchingBracketHighlighter::new(),
-            validator: MatchingBracketValidator::new(),
+            validator: (),
             hinter: HistoryHinter::new(),
             colored_prompt: prompt.to_owned(),
         }
@@ -72,6 +72,7 @@ pub fn make_readline(prompt: &str) -> Result<Editor<ReplHelper, DefaultHistory>,
 
 struct SkimInserter;
 
+
 impl ConditionalEventHandler for SkimInserter {
     fn handle(
         &self,
@@ -80,27 +81,95 @@ impl ConditionalEventHandler for SkimInserter {
         _positive: bool,
         _ctx: &rustyline::EventContext,
     ) -> Option<rustyline::Cmd> {
-        let options = SkimOptionsBuilder::default().multi(true).build().unwrap();
+        // Get files from current directory, respecting gitignore
+        let files = get_files_for_selection();
+        if files.is_empty() {
+            return Some(rustyline::Cmd::Insert(1, "No files found".to_string()));
+        }
 
-        let input = "aaaaa\nbbbb\nccc".to_string();
+        // Create skim options
+        let options = SkimOptionsBuilder::default()
+            .height(Some("50%"))
+            .multi(true)
+            .preview(Some("")) // Empty string activates preview with default command
+            .preview_window(Some("right:50%"))
+            .build()
+            .unwrap();
 
-        // `SkimItemReader` is a helper to turn any `BufRead` into a stream of `SkimItem`
-        // `SkimItem` was implemented for `AsRef<str>` by default
+        // Create a source for skim
+        let input = files.join("\n");
         let item_reader = SkimItemReader::default();
         let items = item_reader.of_bufread(Cursor::new(input));
 
-        // `run_with` would read and show items from the stream
-        let selected_items = Skim::run_with(&options, Some(items))
-            .map(|out| out.selected_items)
-            .unwrap_or_else(|| Vec::new());
+        // Run skim and get selected items
+        let selected_items = match Skim::run_with(&options, Some(items)) {
+            Some(out) => {
+                if out.is_abort {
+                    return None;
+                }
+                out.selected_items
+            }
+            None => return None,
+        };
 
-        Some(rustyline::Cmd::Insert(
-            1,
-            selected_items
-                .iter()
-                .map(|i| i.output())
-                .collect::<Vec<Cow<str>>>()
-                .join(","),
-        ))
+        // Return selected file paths
+        if !selected_items.is_empty() {
+            Some(rustyline::Cmd::Insert(
+                1,
+                selected_items
+                    .iter()
+                    .map(|i| i.output())
+                    .collect::<Vec<Cow<str>>>()
+                    .join(" "),
+            ))
+        } else {
+            None
+        }
     }
+}
+
+/// Get files for selection, respecting gitignore rules and explicitly ignoring common directories
+fn get_files_for_selection() -> Vec<String> {
+    let mut files = Vec::new();
+
+    // Common directories to explicitly ignore
+    let common_ignores = [
+        ".git", "node_modules", "target", "build", "dist",
+        ".idea", ".vscode", "__pycache__", ".next", ".DS_Store"
+    ];
+
+   // Use WalkBuilder from the ignore crate to respect gitignore rules
+   let mut walker = WalkBuilder::new(".");
+   walker.hidden(false)        // Show hidden files (except those ignored)
+        .git_ignore(true)      // Respect .gitignore
+        .git_global(true)      // Respect global gitignore
+        .git_exclude(true)     // Respect .git/info/exclude
+        .require_git(false)    // Don't require a git repo to use git ignore rules
+        .filter_entry(move |entry| {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+            !common_ignores.iter().any(|ignore| &name == ignore)
+        });
+
+    for result in walker.build() {
+        match result {
+            Ok(entry) => {
+                // Skip directories, only include files
+                if entry.file_type().map_or(false, |ft| ft.is_file()) {
+                    if let Some(path) = entry.path().to_str() {
+                        // Convert to relative path if it starts with ./
+                        let path = if path.starts_with("./") {
+                            &path[2..]
+                        } else {
+                            path
+                        };
+                        files.push(path.to_string());
+                    }
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+
+    files
 }
