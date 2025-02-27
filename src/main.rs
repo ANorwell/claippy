@@ -21,11 +21,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let db = Db::create()?;
 
     let config = BedrockConfig {
-        model_id: "anthropic.claude-3-5-sonnet-20241022-v2:0", //"anthropic.claude-3-5-sonnet-20240620-v1:0",
+        model_id: "us.anthropic.claude-3-7-sonnet-20250219-v1:0", //"anthropic.claude-3-7-sonnet-20250219-v1:0",
         system_prompt: system_prompt(),
         temperature: 0.1,
         top_p: 0.9,
-        region: "us-west-2",
+        region: "us-east-1",
         aws_profile_name: "dev",
     };
 
