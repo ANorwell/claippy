@@ -124,9 +124,10 @@ fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOut
     let query_response = model.generate(conversation.as_messages().into())?;
 
     let mut full_content = String::new();
+    let (term_width, _) = terminal_size();
+    let mut displayed_lines = 0;
     let mut current_line = String::new();
-
-    let mut line_count = 1;
+    let mut current_line_display_length = 0;
 
     for chunk_result in query_response {
         let chunk = chunk_result?;
@@ -135,13 +136,17 @@ fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOut
                 // Process and print the completed line
                 print!("{}", skin.inline(&current_line));
                 println!();
-                line_count += 1;
+                displayed_lines += 1 + (current_line_display_length / term_width);
                 io::stdout().flush()?;
                 full_content.push_str(&current_line);
                 full_content.push('\n');
                 current_line.clear();
+                current_line_display_length = 0;
             } else {
                 current_line.push(c);
+                // This is a simplification - ideally we'd account for
+                // wide characters and terminal formatting
+                current_line_display_length += 1;
             }
         }
     }
@@ -150,12 +155,15 @@ fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOut
     if !current_line.is_empty() {
         print!("{}", skin.inline(&current_line));
         println!();
-        line_count += 1;
+        displayed_lines += 1 + (current_line_display_length / term_width);
         io::stdout().flush()?;
         full_content.push_str(&current_line);
     }
 
-    erase_last_n_lines_simple(line_count);
+    // Clear the temporary output
+    erase_displayed_content(displayed_lines.into());
+
+    // Display the prettified output
     let parsed_message = parse_message_parts(full_content);
     println!("{}", format_message(&skin, &parsed_message));
 
@@ -164,13 +172,16 @@ fn handle_query(model: &impl Queryable, query: String, db: &Db) -> Result<CmdOut
     Ok(CmdOutput::Done)
 }
 
-fn erase_last_n_lines_simple(n: usize) {
-    // Move up N lines
-    print!("\x1b[{}A", n);
-    // Clear from cursor down
-    print!("\x1b[J");
-    // Flush stdout
-    std::io::stdout().flush().unwrap();
+// Replace erase_last_n_lines_simple with this more accurate function
+fn erase_displayed_content(lines: usize) {
+    if lines > 0 {
+        // Move cursor up to the beginning of the output
+        print!("\x1b[{}F", lines);
+        // Clear from cursor to end of screen
+        print!("\x1b[J");
+        // Flush stdout
+        std::io::stdout().flush().unwrap();
+    }
 }
 
 const CLAIPPY_ARTIFACT: &str = "ClaippyArtifact";
