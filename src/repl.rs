@@ -3,12 +3,7 @@ use std::{borrow::Cow, io::Cursor};
 use colored::Colorize;
 use ignore::WalkBuilder;
 use rustyline::{
-    completion::FilenameCompleter,
-    error::ReadlineError,
-    highlight::{Highlighter, MatchingBracketHighlighter},
-    hint::HistoryHinter,
-    history::DefaultHistory,
-    Completer, ConditionalEventHandler, Editor, EventHandler, Helper, Hinter, KeyEvent, Validator,
+    completion::FilenameCompleter, error::ReadlineError, highlight::{Highlighter, MatchingBracketHighlighter}, hint::HistoryHinter, history::DefaultHistory, Cmd, Completer, ConditionalEventHandler, Editor, EventHandler, Helper, Hinter, KeyEvent, Validator
 };
 use skim::prelude::*;
 
@@ -63,8 +58,12 @@ pub fn make_readline(prompt: &str) -> Result<Editor<ReplHelper, DefaultHistory>,
     let helper = ReplHelper::new(prompt);
     rl.set_helper(Some(helper));
     rl.bind_sequence(
-        KeyEvent::ctrl('j'),
+        KeyEvent::ctrl('u'),
         EventHandler::Conditional(Box::new(SkimInserter)),
+    );
+     rl.bind_sequence(
+        KeyEvent::ctrl('j'),
+        EventHandler::Simple(Cmd::Newline),
     );
 
     Ok(rl)
@@ -101,20 +100,24 @@ impl ConditionalEventHandler for SkimInserter {
         let item_reader = SkimItemReader::default();
         let items = item_reader.of_bufread(Cursor::new(input));
 
+        // Need to return some so that we handle the event, and need to repaint on cancel so that
+        // the repl re-appears
+        let cancel = Some(Cmd::Repaint);
+
         // Run skim and get selected items
         let selected_items = match Skim::run_with(&options, Some(items)) {
             Some(out) => {
                 if out.is_abort {
-                    return None;
+                    return cancel;
                 }
                 out.selected_items
             }
-            None => return None,
+            None => return cancel,
         };
 
         // Return selected file paths
         if !selected_items.is_empty() {
-            Some(rustyline::Cmd::Insert(
+            Some(Cmd::Insert(
                 1,
                 selected_items
                     .iter()
@@ -123,7 +126,7 @@ impl ConditionalEventHandler for SkimInserter {
                     .join(" "),
             ))
         } else {
-            None
+            cancel
         }
     }
 }
